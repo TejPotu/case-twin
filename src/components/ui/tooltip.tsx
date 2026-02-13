@@ -22,7 +22,7 @@ export function Tooltip({
       {open ? (
         <span
           className={cn(
-            "absolute -top-9 left-1/2 z-50 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-xs text-white"
+            "absolute -top-10 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm"
           )}
         >
           {content}

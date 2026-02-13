@@ -17,8 +17,10 @@ export function Checkbox({ checked, onCheckedChange, id }: CheckboxProps) {
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        "flex h-4 w-4 items-center justify-center rounded border border-slate-300 transition-colors",
-        checked ? "border-blue-600 bg-blue-600 text-white" : "bg-white text-transparent"
+        "flex h-[18px] w-[18px] items-center justify-center rounded-md border border-slate-300 transition-all duration-200",
+        checked
+          ? "border-blue-600 bg-blue-600 text-white shadow-[0_3px_10px_rgba(37,99,235,0.28)]"
+          : "bg-white text-transparent hover:border-slate-400"
       )}
     >
       <Check className="h-3 w-3" />

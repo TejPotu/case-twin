@@ -30,7 +30,7 @@ const ItemContext = React.createContext<string | null>(null);
 export function AccordionItem({ value, children }: { value: string; children: React.ReactNode }) {
   return (
     <ItemContext.Provider value={value}>
-      <div className="rounded-xl border border-slate-200">{children}</div>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">{children}</div>
     </ItemContext.Provider>
   );
 }
@@ -49,7 +49,7 @@ export function AccordionTrigger({ children }: { children: React.ReactNode }) {
     <button
       type="button"
       onClick={() => context.setValue(isOpen ? null : itemValue)}
-      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-900"
+      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
     >
       {children}
       <ChevronDown className={cn("h-4 w-4 text-slate-500 transition-transform", isOpen && "rotate-180")} />
@@ -69,5 +69,5 @@ export function AccordionContent({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  return <div className="border-t border-slate-200 px-4 py-3">{children}</div>;
+  return <div className="border-t border-slate-200 px-4 py-4">{children}</div>;
 }

@@ -20,32 +20,37 @@ export function MemoViewer({ sections }: MemoViewerProps) {
   };
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader className="pb-2">
-        <CardTitle>Transfer Memo</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-3">
+          <span>Transfer Memo</span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] uppercase tracking-wide text-slate-500">
+            Draft
+          </span>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <section className="space-y-1">
-          <h4 className="text-sm font-medium text-slate-900">Presenting Complaint</h4>
-          <p className="text-sm text-slate-700">{sections.presentingComplaint}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Presenting Complaint</h4>
+          <p className="text-sm leading-6 text-slate-700">{sections.presentingComplaint}</p>
         </section>
         <Separator />
         <section className="space-y-1">
-          <h4 className="text-sm font-medium text-slate-900">Case-Twin Match</h4>
-          <p className="text-sm text-slate-700">{sections.caseTwinMatch}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Case-Twin Match</h4>
+          <p className="text-sm leading-6 text-slate-700">{sections.caseTwinMatch}</p>
         </section>
         <Separator />
         <section className="space-y-1">
-          <h4 className="text-sm font-medium text-slate-900">Recommended Protocol</h4>
-          <p className="text-sm text-slate-700">{sections.recommendedProtocol}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Recommended Protocol</h4>
+          <p className="text-sm leading-6 text-slate-700">{sections.recommendedProtocol}</p>
         </section>
         <Separator />
         <section className="space-y-1">
-          <h4 className="text-sm font-medium text-slate-900">Logistics</h4>
-          <p className="text-sm text-slate-700">{sections.logistics}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Logistics</h4>
+          <p className="text-sm leading-6 text-slate-700">{sections.logistics}</p>
         </section>
 
-        <div className="flex flex-wrap gap-2 pt-2">
+        <div className="flex flex-wrap gap-2 pt-3">
           <Button disabled>Download PDF</Button>
           <Button variant="secondary" onClick={copyMemo}>
             <Copy className="h-4 w-4" />

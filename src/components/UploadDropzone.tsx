@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Upload, X } from "lucide-react";
+import { FileImage, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -39,14 +39,17 @@ export function UploadDropzone({ value, onChange }: UploadDropzoneProps) {
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
         className={cn(
-          "rounded-xl border border-dashed border-slate-300 p-6 text-center transition-colors",
-          dragActive ? "border-blue-500 bg-blue-50/40" : "bg-white"
+          "relative overflow-hidden rounded-2xl border border-dashed border-slate-300 p-7 text-center transition-all duration-200",
+          dragActive
+            ? "border-blue-500 bg-blue-50/60 shadow-[0_10px_28px_rgba(37,99,235,0.12)]"
+            : "bg-slate-50/60 hover:border-slate-400"
         )}
       >
-        <Upload className="mx-auto mb-2 h-5 w-5 text-slate-500" />
-        <p className="text-sm text-slate-700">Drop imaging files here</p>
-        <p className="mt-1 text-xs text-slate-500">Accepted: .dcm, .jpg, .jpeg, .png</p>
-        <label className="mt-4 inline-block cursor-pointer rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-blue-300/60 to-transparent" />
+        <Upload className="mx-auto mb-2 h-5 w-5 text-blue-600" />
+        <p className="text-sm font-semibold text-slate-800">Drop imaging files to create a case</p>
+        <p className="mt-1 text-xs text-slate-500">Accepted formats: .dcm, .jpg, .jpeg, .png</p>
+        <label className="mt-4 inline-block cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">
           Browse files
           <input
             type="file"
@@ -63,10 +66,15 @@ export function UploadDropzone({ value, onChange }: UploadDropzoneProps) {
       </div>
 
       {value ? (
-        <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
-          <div>
-            <p className="text-sm text-slate-900">{value.name}</p>
-            <p className="text-xs text-slate-600">{(value.size / 1024).toFixed(1)} KB</p>
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+              <FileImage className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-slate-900">{value.name}</p>
+              <p className="text-xs text-slate-500">{(value.size / 1024).toFixed(1)} KB</p>
+            </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
             <X className="h-4 w-4" />
