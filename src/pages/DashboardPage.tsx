@@ -1,5 +1,13 @@
-import { useMemo, useState, type ButtonHTMLAttributes } from "react";
-import { Check, FileText, MapPin, Settings, UploadCloud } from "lucide-react";
+import { useMemo, useRef, useState, type ButtonHTMLAttributes } from "react";
+import { Bot, Check, FileText, Loader2, MapPin, SendHorizontal, Settings, Sparkles, UploadCloud } from "lucide-react";
+import {
+  computeCaseCompletion,
+  emptyCaseCardDraft,
+  mockAnalyzeClinicalNote,
+  mockIngestImagingFile,
+  mockRespondToAgent,
+  type CaseCardDraft
+} from "@/lib/mockUploadApis";
 import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -168,24 +176,30 @@ function OutcomeBadge({ variant, label }: { variant: OutcomeVariant; label: stri
   );
 }
 
-function Stepper({ step }: { step: Step }) {
+function Stepper({ step, onStepChange }: { step: Step; onStepChange: (next: Step) => void }) {
   return (
     <ol className="flex flex-wrap items-center justify-center gap-2">
       {stepLabels.map((label, idx) => {
         const state = idx < step ? "done" : idx === step ? "active" : "default";
+        const nextStep = idx as Step;
 
         return (
-          <li
-            key={label}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs leading-4",
-              state === "default" && "bg-transparent text-[var(--mr-text-secondary)]",
-              state === "active" && "bg-[var(--mr-action)] font-semibold text-[var(--mr-on-action)]",
-              state === "done" && "bg-[var(--mr-bg-subtle)] text-[var(--mr-text)]"
-            )}
-          >
-            {state === "done" ? <Check className="h-3 w-3" /> : null}
-            <span>{label}</span>
+          <li key={label}>
+            <button
+              type="button"
+              onClick={() => onStepChange(nextStep)}
+              aria-current={idx === step ? "step" : undefined}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs leading-4 transition-colors",
+                state === "default" &&
+                  "bg-transparent text-[var(--mr-text-secondary)] hover:bg-[var(--mr-bg-subtle)] hover:text-[var(--mr-text)]",
+                state === "active" && "bg-[var(--mr-action)] font-semibold text-[var(--mr-on-action)]",
+                state === "done" && "bg-[var(--mr-bg-subtle)] text-[var(--mr-text)]"
+              )}
+            >
+              {state === "done" ? <Check className="h-3 w-3" /> : null}
+              <span>{label}</span>
+            </button>
           </li>
         );
       })}
@@ -204,99 +218,417 @@ function UploadScreen({
   onDeIdentifyChange: (next: boolean) => void;
   onSaveHistoryChange: (next: boolean) => void;
 }) {
-  return (
-    <div className="grid gap-6 lg:grid-cols-[680px_416px]">
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <h1 className="text-[28px] font-semibold leading-[34px] tracking-[-0.01em] text-[var(--mr-text)]">
-            New case
-          </h1>
-          <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">
-            Add imaging and a short note. We will structure it and find the closest Case Twins.
-          </p>
-        </div>
+  const imagingInputRef = useRef<HTMLInputElement | null>(null);
+  const notesFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [draft, setDraft] = useState<CaseCardDraft>(emptyCaseCardDraft);
+  const [clinicalNote, setClinicalNote] = useState("");
+  const [uploadedImaging, setUploadedImaging] = useState<{ name: string; size: number } | null>(null);
+  const [uploadedNoteFile, setUploadedNoteFile] = useState<{ name: string; size: number } | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<
+    Array<{ id: string; role: "assistant" | "user"; content: string }>
+  >([
+    {
+      id: "welcome",
+      role: "assistant",
+      content:
+        "I will help populate the case card. Upload imaging, paste notes, or chat details and I will map them into fields."
+    }
+  ]);
+  const [isIngestingImage, setIsIngestingImage] = useState(false);
+  const [isAnalyzingNotes, setIsAnalyzingNotes] = useState(false);
+  const [isAgentThinking, setIsAgentThinking] = useState(false);
+  const completion = useMemo(() => computeCaseCompletion(draft), [draft]);
 
-        <SurfaceCard>
-          <div className="mx-auto flex min-h-[180px] w-full max-w-[640px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-4 py-6 text-center">
-            <UploadCloud className="h-8 w-8 text-[var(--mr-text-secondary)]" />
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Drop DICOM or image here</p>
+  const mergeDraft = (patch: Partial<CaseCardDraft>) => {
+    setDraft((current) => ({
+      ...current,
+      ...patch,
+      currentSymptoms: patch.currentSymptoms
+        ? Array.from(new Set([...current.currentSymptoms, ...patch.currentSymptoms]))
+        : current.currentSymptoms
+    }));
+  };
+
+  const addChatMessage = (role: "assistant" | "user", content: string) => {
+    setChatMessages((current) => [
+      ...current,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role, content }
+    ]);
+  };
+
+  const handleImagingPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setUploadedImaging({ name: file.name, size: file.size });
+    setIsIngestingImage(true);
+
+    try {
+      const result = await mockIngestImagingFile(file.name);
+      mergeDraft(result.patch);
+      addChatMessage("assistant", result.reply);
+    } finally {
+      setIsIngestingImage(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleNotesFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setUploadedNoteFile({ name: file.name, size: file.size });
+    addChatMessage(
+      "assistant",
+      `Loaded ${file.name}. Paste the content in Clinical Notes and click Analyze to map fields.`
+    );
+    event.target.value = "";
+  };
+
+  const handleAnalyzeNotes = async () => {
+    if (!clinicalNote.trim()) {
+      addChatMessage("assistant", "Add or paste clinical notes first, then I can analyze and populate the card.");
+      return;
+    }
+
+    setIsAnalyzingNotes(true);
+    try {
+      const result = await mockAnalyzeClinicalNote(clinicalNote);
+      mergeDraft(result.patch);
+      addChatMessage("assistant", result.reply);
+    } finally {
+      setIsAnalyzingNotes(false);
+    }
+  };
+
+  const handleSend = async () => {
+    const message = chatInput.trim();
+    if (!message) {
+      return;
+    }
+
+    setChatInput("");
+    addChatMessage("user", message);
+    setIsAgentThinking(true);
+
+    try {
+      const result = await mockRespondToAgent(message, draft);
+      mergeDraft(result.patch);
+      addChatMessage("assistant", result.reply);
+    } finally {
+      setIsAgentThinking(false);
+    }
+  };
+
+  const confidenceTone =
+    completion.score >= 80 ? "text-[var(--mr-success)]" : completion.score >= 50 ? "text-[var(--mr-warning)]" : "text-[var(--mr-text)]";
+
+  const renderField = (value: string, placeholder = "Waiting for input") =>
+    value ? (
+      <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">{value}</p>
+    ) : (
+      <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">{placeholder}</p>
+    );
+
+  return (
+    <div className="grid h-full min-h-0 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="min-h-0 flex flex-col overflow-hidden">
+        <SurfaceCard className="h-full min-h-0 overflow-y-auto">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case card draft</p>
+              <h2 className="text-[22px] font-semibold leading-7 text-[var(--mr-text)]">Case profile</h2>
+            </div>
+            <div className="rounded-xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-3 py-2 text-right">
+              <p className={cn("text-[20px] font-semibold leading-6", confidenceTone)}>{completion.score}%</p>
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                Confidence {completion.completed}/{completion.total}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="h-2 rounded-full bg-[var(--mr-bg-subtle)]">
+              <div
+                className="h-2 rounded-full bg-[var(--mr-action)] transition-all"
+                style={{ width: `${completion.score}%` }}
+              />
+            </div>
             <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-              DICOM (.dcm), JPG, PNG up to 50 MB
+              Required fields are scored with mock logic for now.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-3">
-              <MedButton variant="secondary" size="sm">
-                Browse files
-              </MedButton>
-              <MedButton variant="tertiary" size="sm">
-                Import from PACS (Beta)
-              </MedButton>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Age</p>
+              {renderField(draft.patientAge, "Not captured")}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Sex</p>
+              {renderField(draft.patientSex, "Not captured")}
+            </div>
+            <div className="space-y-0.5 sm:col-span-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Primary concern</p>
+              {renderField(draft.presentingConcern, "Waiting for concern from note or chat")}
+            </div>
+            <div className="space-y-0.5 sm:col-span-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Symptoms</p>
+              {draft.currentSymptoms.length > 0 ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {draft.currentSymptoms.map((symptom) => (
+                    <span key={symptom} className="mr-badge mr-badge--neutral">
+                      {symptom}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">
+                  Waiting for symptom extraction
+                </p>
+              )}
+            </div>
+            <div className="space-y-0.5 sm:col-span-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Suspected diagnosis</p>
+              {renderField(draft.suspectedDiagnosis, "No diagnostic hypothesis yet")}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Imaging modality</p>
+              {renderField(draft.imagingModality, "Awaiting imaging upload")}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Imaging file</p>
+              {renderField(draft.imagingFileName, "No file attached")}
+            </div>
+            <div className="space-y-0.5 sm:col-span-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Clinical summary</p>
+              {renderField(draft.clinicalSummary, "Summary appears after note analysis")}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Vitals</p>
+              {renderField(draft.vitals, "Optional")}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Allergies</p>
+              {renderField(draft.allergies, "Optional")}
             </div>
           </div>
 
           <div className="mr-divider" />
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Capture from phone</p>
-            <MedButton variant="secondary" size="sm">
-              Show QR
-            </MedButton>
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard>
-          <div className="space-y-1">
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Clinical note</p>
-            <textarea
-              className="mr-textarea"
-              defaultValue=""
-              placeholder="52-year-old with hemoptysis and weight loss. CT shows right hilar mass and mediastinal lymphadenopathy. No known prior malignancy."
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
-            <LabeledCheckbox
-              checked={deIdentify}
-              label="De-identify on upload"
-              onChange={onDeIdentifyChange}
-            />
-            <LabeledCheckbox
-              checked={saveToHistory}
-              label="Save to Case History"
-              onChange={onSaveHistoryChange}
-            />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[var(--mr-text-secondary)]" />
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Missing for stronger confidence</p>
+            </div>
+            {completion.missing.length === 0 ? (
+              <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
+                Required fields captured. Ready for review.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {completion.missing.map((missingField) => (
+                  <span key={missingField} className="mr-badge mr-badge--warning">
+                    {missingField}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </SurfaceCard>
       </div>
 
-      <div className="space-y-4">
-        <SurfaceCard>
-          <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">What happens next</h2>
-          <ol className="space-y-2">
-            {[
-              "Extract a clean clinical summary (FHIR-ready).",
-              "Generate a case embedding.",
-              "Find top matches with outcomes.",
-              "Recommend best-capability centers.",
-              "Generate a transfer memo."
-            ].map((item, idx) => (
-              <li key={item} className="flex items-start gap-2">
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--mr-bg-subtle)] text-xs leading-4 text-[var(--mr-text)]">
-                  {idx + 1}
+      <div className="relative min-h-0 flex flex-col gap-4 overflow-hidden">
+        {isChatOpen ? (
+          <SurfaceCard className="h-full min-h-0 gap-0 overflow-hidden p-0">
+            <div className="flex items-center justify-between border-b border-[var(--mr-border)] px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <Bot className="h-5 w-5 text-[var(--mr-text-secondary)]" />
+                <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">AI copilot</h2>
+                <span className="rounded-full border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-2 py-0.5 text-[11px] text-[var(--mr-text-secondary)]">
+                  Agent mode
                 </span>
-                <span className="text-[15px] leading-[22px] text-[var(--mr-text)]">{item}</span>
-              </li>
-            ))}
-          </ol>
-        </SurfaceCard>
+              </div>
+              <MedButton variant="secondary" size="sm" onClick={() => setIsChatOpen(false)}>
+                Collapse
+              </MedButton>
+            </div>
 
-        <SurfaceCard className="border-dashed">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-[var(--mr-text-secondary)]" />
-            <p className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">CT_Chest_Scan_001.dcm</p>
-          </div>
-          <p className="text-xs leading-4 text-[var(--mr-text)]">Modality: CT</p>
-          <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Uploaded: Just now</p>
-        </SurfaceCard>
+            <div className="min-h-0 flex-1 space-y-2 overflow-auto bg-[var(--mr-bg-subtle)] px-4 py-3">
+              {chatMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
+                >
+                  <div
+                    className={cn(
+                      "max-w-[92%] rounded-xl px-3 py-2 text-sm leading-5",
+                      message.role === "user"
+                        ? "bg-[var(--mr-action)] text-[var(--mr-on-action)]"
+                        : "border border-[var(--mr-border)] bg-white text-[var(--mr-text)]"
+                    )}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+              {isAgentThinking ? (
+                <div className="flex items-center gap-2 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Agent is reasoning...
+                </div>
+              ) : null}
+            </div>
+
+            <div className="border-t border-[var(--mr-border)] bg-white p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  className="mr-input"
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder="Ask agent to fill fields, e.g. 'male, 52, persistent cough'"
+                />
+                <MedButton variant="primary" size="sm" onClick={() => void handleSend()} disabled={isAgentThinking}>
+                  <SendHorizontal className="h-4 w-4" />
+                  Send
+                </MedButton>
+              </div>
+            </div>
+          </SurfaceCard>
+        ) : (
+          <>
+            <SurfaceCard className="min-h-0 flex-1 overflow-y-auto border border-[var(--mr-border)] bg-white shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Context ingestion</h2>
+                  <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                    Feed structured and unstructured context to the agent.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] p-4">
+                <div className="flex items-center gap-2">
+                  <UploadCloud className="h-5 w-5 text-[var(--mr-text-secondary)]" />
+                  <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Imaging upload</p>
+                </div>
+                <p className="pt-1 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                  Dummy API: modality + metadata extraction.
+                </p>
+                <div className="pt-3">
+                  <input
+                    ref={imagingInputRef}
+                    type="file"
+                    accept=".dcm,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={handleImagingPick}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imagingInputRef.current?.click()}
+                    disabled={isIngestingImage}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--mr-border)] bg-white px-3 text-[13px] font-medium text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isIngestingImage ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Ingesting...
+                      </>
+                    ) : (
+                      "Upload imaging"
+                    )}
+                  </button>
+                </div>
+                {uploadedImaging ? (
+                  <div className="mt-3 rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                    <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">{uploadedImaging.name}</p>
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                      {(uploadedImaging.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Clinical notes</p>
+                <textarea
+                  className="mr-textarea min-h-[130px]"
+                  placeholder="Paste notes or write findings. Example: 52-year-old male with hemoptysis and weight loss..."
+                  value={clinicalNote}
+                  onChange={(event) => setClinicalNote(event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={notesFileInputRef}
+                  type="file"
+                  accept=".txt,.pdf,.doc,.docx"
+                  className="hidden"
+                  onChange={handleNotesFilePick}
+                />
+                <button
+                  type="button"
+                  onClick={() => notesFileInputRef.current?.click()}
+                  className="inline-flex h-9 items-center rounded-lg border border-[var(--mr-border)] bg-white px-3 text-[13px] font-medium text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)]"
+                >
+                  Upload note file
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleAnalyzeNotes()}
+                  disabled={isAnalyzingNotes}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--mr-action)] px-3 text-[13px] font-medium text-[var(--mr-on-action)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isAnalyzingNotes ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    "Analyze notes"
+                  )}
+                </button>
+              </div>
+              {uploadedNoteFile ? (
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Attached note: {uploadedNoteFile.name}</p>
+              ) : null}
+
+              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+                <LabeledCheckbox
+                  checked={deIdentify}
+                  label="De-identify on upload"
+                  onChange={onDeIdentifyChange}
+                />
+                <LabeledCheckbox
+                  checked={saveToHistory}
+                  label="Save to Case History"
+                  onChange={onSaveHistoryChange}
+                />
+              </div>
+            </SurfaceCard>
+            <button
+              type="button"
+              onClick={() => setIsChatOpen(true)}
+              aria-label="Open AI chat"
+              className="absolute bottom-4 right-4 inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--mr-border)] bg-[var(--mr-action)] text-[var(--mr-on-action)] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:opacity-90"
+            >
+              <Bot className="h-5 w-5" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -413,7 +745,9 @@ function ReviewScreen({
           </div>
 
           <div className="flex items-center gap-2 rounded-xl bg-[#FFFBEB] p-3">
-            <span className="text-sm text-[var(--mr-warning)]">⚠</span>
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#FDE68A] text-xs text-[var(--mr-warning)]">
+              !
+            </span>
             <p className="text-xs leading-4 text-[var(--mr-warning)]">Smoking history not found.</p>
           </div>
         </SurfaceCard>
@@ -732,36 +1066,8 @@ export function DashboardPage() {
     "3T MRI": true
   });
 
-  const helperText = step === 1 ? "Review the extraction before searching." : "";
-  const primaryLabel =
-    step === 0
-      ? "Continue"
-      : step === 1
-        ? "Looks good, continue"
-        : step === 2
-          ? "Continue"
-          : step === 3
-            ? "Generate transfer memo"
-            : null;
-
-  const advance = () =>
-    setStep((current) => {
-      if (current >= 4) {
-        return current;
-      }
-      return (current + 1) as Step;
-    });
-
-  const goBack = () =>
-    setStep((current) => {
-      if (current <= 0) {
-        return current;
-      }
-      return (current - 1) as Step;
-    });
-
   return (
-    <div className="min-h-screen bg-[var(--mr-page)] text-[var(--mr-text)]">
+    <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
       <header className="fixed left-0 right-0 top-0 z-40 h-16 border-b border-[var(--mr-border)] bg-white">
         <div className="mr-container flex h-full items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -790,11 +1096,13 @@ export function DashboardPage() {
 
       <div className="fixed left-0 right-0 top-16 z-30 h-14 bg-white">
         <div className="mr-container flex h-full items-center justify-center">
-          <Stepper step={step} />
+          <Stepper step={step} onStepChange={setStep} />
         </div>
       </div>
 
-      <main className="mr-container pb-28 pt-36">
+      <main
+        className={cn("mr-container h-full pb-6 pt-36", step === 0 ? "overflow-hidden" : "overflow-auto")}
+      >
         {step === 0 ? (
           <UploadScreen
             deIdentify={deIdentify}
@@ -832,24 +1140,6 @@ export function DashboardPage() {
 
         {step === 4 ? <MemoScreen /> : null}
       </main>
-
-      <footer className="fixed bottom-0 left-0 right-0 z-40 h-[72px] border-t border-[var(--mr-border)] bg-white">
-        <div className="mr-container flex h-full items-center justify-between gap-3">
-          <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">{helperText}</p>
-          <div className="flex items-center gap-3">
-            {step > 0 ? (
-              <MedButton variant="secondary" onClick={goBack}>
-                Back
-              </MedButton>
-            ) : null}
-            {primaryLabel ? (
-              <MedButton variant="primary" onClick={advance}>
-                {primaryLabel}
-              </MedButton>
-            ) : null}
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

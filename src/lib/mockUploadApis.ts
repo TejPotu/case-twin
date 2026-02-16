@@ -1,0 +1,216 @@
+export interface CaseCardDraft {
+  patientAge: string;
+  patientSex: string;
+  presentingConcern: string;
+  currentSymptoms: string[];
+  suspectedDiagnosis: string;
+  imagingModality: string;
+  imagingFileName: string;
+  clinicalSummary: string;
+  vitals: string;
+  allergies: string;
+}
+
+export interface MockAgentResponse {
+  reply: string;
+  patch: Partial<CaseCardDraft>;
+}
+
+interface CompletionField {
+  key: keyof CaseCardDraft;
+  label: string;
+  check: (value: CaseCardDraft[keyof CaseCardDraft]) => boolean;
+}
+
+const completionFields: CompletionField[] = [
+  { key: "patientAge", label: "Patient age", check: (value) => Boolean(value) },
+  { key: "patientSex", label: "Patient sex", check: (value) => Boolean(value) },
+  { key: "presentingConcern", label: "Primary concern", check: (value) => Boolean(value) },
+  { key: "currentSymptoms", label: "Symptoms", check: (value) => Array.isArray(value) && value.length > 0 },
+  { key: "suspectedDiagnosis", label: "Suspected diagnosis", check: (value) => Boolean(value) },
+  { key: "imagingModality", label: "Imaging modality", check: (value) => Boolean(value) },
+  { key: "imagingFileName", label: "Imaging file", check: (value) => Boolean(value) },
+  { key: "clinicalSummary", label: "Clinical summary", check: (value) => Boolean(value) }
+];
+
+const symptomDictionary: Array<[RegExp, string]> = [
+  [/hemoptysis/i, "Hemoptysis"],
+  [/weight loss/i, "Weight loss"],
+  [/dyspnea|shortness of breath/i, "Dyspnea"],
+  [/cough/i, "Persistent cough"],
+  [/chest pain/i, "Chest pain"],
+  [/fever/i, "Fever"],
+  [/fatigue/i, "Fatigue"],
+  [/headache/i, "Headache"]
+];
+
+export const emptyCaseCardDraft: CaseCardDraft = {
+  patientAge: "",
+  patientSex: "",
+  presentingConcern: "",
+  currentSymptoms: [],
+  suspectedDiagnosis: "",
+  imagingModality: "",
+  imagingFileName: "",
+  clinicalSummary: "",
+  vitals: "",
+  allergies: ""
+};
+
+export function computeCaseCompletion(draft: CaseCardDraft) {
+  const completed = completionFields.filter((field) => field.check(draft[field.key])).length;
+  const total = completionFields.length;
+  const missing = completionFields
+    .filter((field) => !field.check(draft[field.key]))
+    .map((field) => field.label);
+
+  return {
+    score: Math.round((completed / total) * 100),
+    completed,
+    total,
+    missing
+  };
+}
+
+export async function mockIngestImagingFile(fileName: string): Promise<MockAgentResponse> {
+  await delay(700);
+
+  const lower = fileName.toLowerCase();
+  const modality = lower.endsWith(".dcm")
+    ? "CT Chest (from DICOM header)"
+    : lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+      ? "Chest image upload"
+      : "Imaging uploaded";
+
+  return {
+    reply:
+      "I parsed the upload metadata and updated the imaging section in the case card. Add notes for stronger clinical confidence.",
+    patch: {
+      imagingFileName: fileName,
+      imagingModality: modality
+    }
+  };
+}
+
+export async function mockAnalyzeClinicalNote(note: string): Promise<MockAgentResponse> {
+  await delay(1000);
+
+  const patch = extractPatchFromText(note);
+  const completion = Object.keys(patch).length;
+
+  return {
+    reply:
+      completion > 0
+        ? `Analyzed note and mapped ${completion} field${completion === 1 ? "" : "s"} to the case card.`
+        : "I could not map this note yet. Try adding age, symptoms, and suspected diagnosis in plain language.",
+    patch
+  };
+}
+
+export async function mockRespondToAgent(
+  userMessage: string,
+  currentDraft: CaseCardDraft
+): Promise<MockAgentResponse> {
+  await delay(800);
+
+  if (/what is missing|what's missing|missing fields|what else/i.test(userMessage)) {
+    const completion = computeCaseCompletion(currentDraft);
+    if (completion.missing.length === 0) {
+      return {
+        reply: "Required sections are complete for this draft. You can proceed to review.",
+        patch: {}
+      };
+    }
+
+    return {
+      reply: `Still missing: ${completion.missing.join(", ")}.`,
+      patch: {}
+    };
+  }
+
+  const patch = extractPatchFromText(userMessage);
+  const mappedCount = Object.keys(patch).length;
+
+  if (mappedCount === 0) {
+    return {
+      reply:
+        "I am ready to map details. Share age, sex, symptoms, imaging findings, or suspected diagnosis and I will update the case card.",
+      patch: {}
+    };
+  }
+
+  return {
+    reply: `Captured ${mappedCount} update${mappedCount === 1 ? "" : "s"} from your message and merged it into the case card.`,
+    patch
+  };
+}
+
+function extractPatchFromText(text: string): Partial<CaseCardDraft> {
+  const normalized = text.trim();
+  if (!normalized) {
+    return {};
+  }
+
+  const patch: Partial<CaseCardDraft> = {};
+
+  const ageMatch = normalized.match(/(\d{1,3})\s*[- ]?(?:year|yr)/i);
+  if (ageMatch?.[1]) {
+    patch.patientAge = ageMatch[1];
+  }
+
+  if (/\bmale\b|\bman\b/i.test(normalized)) {
+    patch.patientSex = "Male";
+  } else if (/\bfemale\b|\bwoman\b/i.test(normalized)) {
+    patch.patientSex = "Female";
+  }
+
+  const symptoms = symptomDictionary
+    .filter(([pattern]) => pattern.test(normalized))
+    .map(([, label]) => label);
+  if (symptoms.length > 0) {
+    patch.currentSymptoms = symptoms;
+  }
+
+  if (/ct|computed tomography/i.test(normalized)) {
+    patch.imagingModality = "CT Chest";
+  } else if (/mri/i.test(normalized)) {
+    patch.imagingModality = "MRI";
+  } else if (/x[- ]?ray/i.test(normalized)) {
+    patch.imagingModality = "X-ray";
+  }
+
+  if (/right hilar mass|lung mass|pulmonary mass|mediastinal/i.test(normalized)) {
+    patch.suspectedDiagnosis = "Possible lung malignancy";
+  } else if (/stroke|mca occlusion|ischemic/i.test(normalized)) {
+    patch.suspectedDiagnosis = "Acute ischemic stroke";
+  } else if (/pneumonia/i.test(normalized)) {
+    patch.suspectedDiagnosis = "Community-acquired pneumonia";
+  }
+
+  if (/allerg/i.test(normalized) && /none/i.test(normalized)) {
+    patch.allergies = "No known allergies";
+  }
+
+  const vitalsMatch = normalized.match(
+    /(bp|blood pressure|hr|heart rate|spo2|oxygen saturation)[^.!?\n]{0,50}/i
+  );
+  if (vitalsMatch?.[0]) {
+    patch.vitals = vitalsMatch[0].trim();
+  }
+
+  if (normalized.length > 35) {
+    patch.clinicalSummary = normalized.slice(0, 220);
+  }
+
+  if (!patch.presentingConcern && symptoms.length > 0) {
+    patch.presentingConcern = symptoms.slice(0, 2).join(", ");
+  } else if (/presenting with|complaint of|reports/i.test(normalized)) {
+    patch.presentingConcern = normalized.slice(0, 120);
+  }
+
+  return patch;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
