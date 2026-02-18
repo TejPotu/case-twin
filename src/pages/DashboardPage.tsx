@@ -233,7 +233,7 @@ function UploadScreen({
       id: "welcome",
       role: "assistant",
       content:
-        "I will help populate the case card. Upload imaging, paste notes, or chat details and I will map them into fields."
+        "Clinical assistant online. Share imaging impressions, symptom timeline, or referral details and I will structure the case profile."
     }
   ]);
   const [isIngestingImage, setIsIngestingImage] = useState(false);
@@ -328,6 +328,10 @@ function UploadScreen({
 
   const confidenceTone =
     completion.score >= 80 ? "text-[var(--mr-success)]" : completion.score >= 50 ? "text-[var(--mr-warning)]" : "text-[var(--mr-text)]";
+  const confidenceRingColor =
+    completion.score >= 80 ? "var(--mr-success)" : completion.score >= 50 ? "var(--mr-warning)" : "var(--mr-action)";
+  const confidenceLabel =
+    completion.score >= 80 ? "High completeness" : completion.score >= 50 ? "Moderate completeness" : "Low completeness";
 
   const renderField = (value: string, placeholder = "Waiting for input") =>
     value ? (
@@ -337,7 +341,7 @@ function UploadScreen({
     );
 
   return (
-    <div className="grid h-full min-h-0 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="grid h-full min-h-0 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
       <div className="min-h-0 flex flex-col overflow-hidden">
         <SurfaceCard className="h-full min-h-0 overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -345,25 +349,29 @@ function UploadScreen({
               <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case card draft</p>
               <h2 className="text-[22px] font-semibold leading-7 text-[var(--mr-text)]">Case profile</h2>
             </div>
-            <div className="rounded-xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-3 py-2 text-right">
-              <p className={cn("text-[20px] font-semibold leading-6", confidenceTone)}>{completion.score}%</p>
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-                Confidence {completion.completed}/{completion.total}
-              </p>
+            <div className="flex items-center gap-3 rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-3 py-2">
+              <div
+                role="img"
+                aria-label={`Confidence ${completion.score}%`}
+                className="relative grid h-14 w-14 place-items-center rounded-full"
+                style={{
+                  background: `conic-gradient(${confidenceRingColor} ${completion.score}%, var(--mr-border) ${completion.score}% 100%)`
+                }}
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-white">
+                  <p className={cn("text-xs font-semibold leading-4", confidenceTone)}>{completion.score}%</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className={cn("text-sm font-semibold leading-5", confidenceTone)}>{confidenceLabel}</p>
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Confidence score</p>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="h-2 rounded-full bg-[var(--mr-bg-subtle)]">
-              <div
-                className="h-2 rounded-full bg-[var(--mr-action)] transition-all"
-                style={{ width: `${completion.score}%` }}
-              />
-            </div>
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-              Required fields are scored with mock logic for now.
-            </p>
-          </div>
+          <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+            Confidence reflects structured clinical fields captured from imaging and narrative intake.
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-0.5">
@@ -444,23 +452,44 @@ function UploadScreen({
         </SurfaceCard>
       </div>
 
-      <div className="relative min-h-0 flex flex-col gap-4 overflow-hidden">
+      <div className="relative min-h-0 flex flex-col overflow-hidden">
         {isChatOpen ? (
-          <SurfaceCard className="h-full min-h-0 gap-0 overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-[var(--mr-border)] px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <Bot className="h-5 w-5 text-[var(--mr-text-secondary)]" />
-                <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">AI copilot</h2>
-                <span className="rounded-full border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-2 py-0.5 text-[11px] text-[var(--mr-text-secondary)]">
-                  Agent mode
+          <SurfaceCard className="h-full min-h-0 gap-0 overflow-hidden border border-[var(--mr-border)] bg-gradient-to-b from-white to-[var(--mr-bg-subtle)] p-0 shadow-[0_14px_30px_rgba(15,67,102,0.12)]">
+            <div className="space-y-3 border-b border-[var(--mr-border)] bg-white/85 px-4 py-3 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#dceef9] text-[#0a678f]">
+                    <Bot className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Clinical Decision Support</h2>
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">AI triage copilot</p>
+                  </div>
+                </div>
+                <span className="rounded-full border border-[#c6dced] bg-[#eff8ff] px-2 py-0.5 text-[11px] font-medium text-[#0a678f]">
+                  Live inference
                 </span>
               </div>
-              <MedButton variant="secondary" size="sm" onClick={() => setIsChatOpen(false)}>
-                Collapse
-              </MedButton>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                  <p className="text-[11px] leading-4 text-[var(--mr-text-secondary)]">Clinical lane</p>
+                  <p className="text-[13px] font-medium leading-5 text-[var(--mr-text)]">Thoracic oncology routing</p>
+                </div>
+                <div className="rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                  <p className="text-[11px] leading-4 text-[var(--mr-text-secondary)]">Assistant behavior</p>
+                  <p className="text-[13px] font-medium leading-5 text-[var(--mr-text)]">Extract, normalize, and summarize</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <MedButton variant="secondary" size="sm" onClick={() => setIsChatOpen(false)}>
+                  Minimize
+                </MedButton>
+              </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-auto bg-[var(--mr-bg-subtle)] px-4 py-3">
+            <div className="min-h-0 flex-1 space-y-2 overflow-auto bg-gradient-to-b from-[#f4fafe] to-[#ecf5fb] px-4 py-3">
               {chatMessages.map((message) => (
                 <div
                   key={message.id}
@@ -468,10 +497,10 @@ function UploadScreen({
                 >
                   <div
                     className={cn(
-                      "max-w-[92%] rounded-xl px-3 py-2 text-sm leading-5",
+                      "max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-5 shadow-[0_4px_14px_rgba(15,67,102,0.08)]",
                       message.role === "user"
                         ? "bg-[var(--mr-action)] text-[var(--mr-on-action)]"
-                        : "border border-[var(--mr-border)] bg-white text-[var(--mr-text)]"
+                        : "border border-[#c6dced] bg-[#f6fbff] text-[var(--mr-text)]"
                     )}
                   >
                     {message.content}
@@ -479,14 +508,14 @@ function UploadScreen({
                 </div>
               ))}
               {isAgentThinking ? (
-                <div className="flex items-center gap-2 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                <div className="flex items-center gap-2 rounded-lg border border-[#c6dced] bg-[#f6fbff] px-3 py-2 text-xs leading-4 text-[var(--mr-text-secondary)]">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Agent is reasoning...
+                  Running clinical reasoning on current intake...
                 </div>
               ) : null}
             </div>
 
-            <div className="border-t border-[var(--mr-border)] bg-white p-3">
+            <div className="border-t border-[var(--mr-border)] bg-white/90 p-3 backdrop-blur">
               <div className="flex items-center gap-2">
                 <input
                   className="mr-input"
@@ -498,35 +527,59 @@ function UploadScreen({
                       void handleSend();
                     }
                   }}
-                  placeholder="Ask agent to fill fields, e.g. 'male, 52, persistent cough'"
+                  placeholder="Enter clinical detail, e.g. '52M with hemoptysis and mediastinal LAD on CT'"
                 />
                 <MedButton variant="primary" size="sm" onClick={() => void handleSend()} disabled={isAgentThinking}>
                   <SendHorizontal className="h-4 w-4" />
-                  Send
+                  Submit
                 </MedButton>
               </div>
             </div>
           </SurfaceCard>
         ) : (
           <>
-            <SurfaceCard className="min-h-0 flex-1 overflow-y-auto border border-[var(--mr-border)] bg-white shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Context ingestion</h2>
-                  <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-                    Feed structured and unstructured context to the agent.
-                  </p>
+            <SurfaceCard className="min-h-0 overflow-y-auto border border-[var(--mr-border)] bg-white shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+              <div className="rounded-2xl border border-[var(--mr-border)] bg-gradient-to-br from-[var(--mr-bg-subtle)] to-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Intake workspace</p>
+                    <h2 className="text-[18px] font-semibold leading-6 text-[var(--mr-text)]">Clinical Context Intake</h2>
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                      Capture radiology studies, physician narrative, and privacy controls for downstream triage.
+                    </p>
+                  </div>
+                  <span className="inline-flex h-7 items-center rounded-full border border-[var(--mr-border)] bg-white px-3 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                    Active intake
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Radiology channel</p>
+                    <p className="text-[14px] leading-5 text-[var(--mr-text)]">DICOM and image metadata extraction</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Narrative channel</p>
+                    <p className="text-[14px] leading-5 text-[var(--mr-text)]">H&P, referral notes, symptom timeline</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] p-4">
-                <div className="flex items-center gap-2">
-                  <UploadCloud className="h-5 w-5 text-[var(--mr-text-secondary)]" />
-                  <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Imaging upload</p>
+              <div className="rounded-2xl border border-[var(--mr-border)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <UploadCloud className="h-4 w-4 text-[var(--mr-text-secondary)]" />
+                      <h3 className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">Radiology packet</h3>
+                    </div>
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                      Attach CT, MRI, or X-ray studies to auto-capture modality and preliminary findings.
+                    </p>
+                  </div>
+                  <span className="inline-flex h-6 items-center rounded-full border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-2.5 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                    {uploadedImaging ? "Study received" : "Awaiting study"}
+                  </span>
                 </div>
-                <p className="pt-1 text-xs leading-4 text-[var(--mr-text-secondary)]">
-                  Dummy API: modality + metadata extraction.
-                </p>
+
                 <div className="pt-3">
                   <input
                     ref={imagingInputRef}
@@ -544,15 +597,17 @@ function UploadScreen({
                     {isIngestingImage ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Ingesting...
+                        Processing study...
                       </>
                     ) : (
-                      "Upload imaging"
+                      "Attach imaging study"
                     )}
                   </button>
                 </div>
+
                 {uploadedImaging ? (
-                  <div className="mt-3 rounded-xl border border-[var(--mr-border)] bg-white px-3 py-2">
+                  <div className="mt-3 rounded-xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-3 py-2">
+                    <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Study file</p>
                     <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">{uploadedImaging.name}</p>
                     <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
                       {(uploadedImaging.size / 1024 / 1024).toFixed(2)} MB
@@ -561,69 +616,90 @@ function UploadScreen({
                 ) : null}
               </div>
 
-              <div className="space-y-1">
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Clinical notes</p>
-                <textarea
-                  className="mr-textarea min-h-[130px]"
-                  placeholder="Paste notes or write findings. Example: 52-year-old male with hemoptysis and weight loss..."
-                  value={clinicalNote}
-                  onChange={(event) => setClinicalNote(event.target.value)}
-                />
+              <div className="rounded-2xl border border-[var(--mr-border)] p-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-[var(--mr-text-secondary)]" />
+                    <h3 className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">Clinical narrative</h3>
+                  </div>
+                  <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                    Provide physician note, H&P, referral summary, and symptom progression.
+                  </p>
+                </div>
+
+                <div className="pt-3 space-y-1">
+                  <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Narrative source text</p>
+                  <textarea
+                    className="mr-textarea min-h-[220px]"
+                    placeholder="Example: 52-year-old with persistent hemoptysis, unintentional weight loss, and right hilar mass noted on CT chest..."
+                    value={clinicalNote}
+                    onChange={(event) => setClinicalNote(event.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-3">
+                  <input
+                    ref={notesFileInputRef}
+                    type="file"
+                    accept=".txt,.pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={handleNotesFilePick}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => notesFileInputRef.current?.click()}
+                    className="inline-flex h-9 items-center rounded-lg border border-[var(--mr-border)] bg-white px-3 text-[13px] font-medium text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)]"
+                  >
+                    Attach referral document
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleAnalyzeNotes()}
+                    disabled={isAnalyzingNotes}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--mr-action)] px-3 text-[13px] font-medium text-[var(--mr-on-action)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isAnalyzingNotes ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Extracting findings...
+                      </>
+                    ) : (
+                      "Extract structured findings"
+                    )}
+                  </button>
+                </div>
+
+                {uploadedNoteFile ? (
+                  <p className="pt-2 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                    Attached narrative document: {uploadedNoteFile.name}
+                  </p>
+                ) : null}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  ref={notesFileInputRef}
-                  type="file"
-                  accept=".txt,.pdf,.doc,.docx"
-                  className="hidden"
-                  onChange={handleNotesFilePick}
-                />
-                <button
-                  type="button"
-                  onClick={() => notesFileInputRef.current?.click()}
-                  className="inline-flex h-9 items-center rounded-lg border border-[var(--mr-border)] bg-white px-3 text-[13px] font-medium text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)]"
-                >
-                  Upload note file
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleAnalyzeNotes()}
-                  disabled={isAnalyzingNotes}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--mr-action)] px-3 text-[13px] font-medium text-[var(--mr-on-action)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isAnalyzingNotes ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    "Analyze notes"
-                  )}
-                </button>
-              </div>
-              {uploadedNoteFile ? (
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Attached note: {uploadedNoteFile.name}</p>
-              ) : null}
-
-              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
-                <LabeledCheckbox
-                  checked={deIdentify}
-                  label="De-identify on upload"
-                  onChange={onDeIdentifyChange}
-                />
-                <LabeledCheckbox
-                  checked={saveToHistory}
-                  label="Save to Case History"
-                  onChange={onSaveHistoryChange}
-                />
+              <div className="rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] p-4">
+                <h3 className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">Privacy and retention</h3>
+                <p className="pt-1 text-xs leading-4 text-[var(--mr-text-secondary)]">
+                  Control PHI handling and case archival before running intake.
+                </p>
+                <div className="flex flex-wrap gap-x-6 gap-y-2 pt-3">
+                  <LabeledCheckbox
+                    checked={deIdentify}
+                    label="Auto de-identify PHI during ingestion"
+                    onChange={onDeIdentifyChange}
+                  />
+                  <LabeledCheckbox
+                    checked={saveToHistory}
+                    label="Store in longitudinal case history"
+                    onChange={onSaveHistoryChange}
+                  />
+                </div>
               </div>
             </SurfaceCard>
             <button
               type="button"
               onClick={() => setIsChatOpen(true)}
-              aria-label="Open AI chat"
-              className="absolute bottom-4 right-4 inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--mr-border)] bg-[var(--mr-action)] text-[var(--mr-on-action)] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:opacity-90"
+              aria-label="Open clinical assistant"
+              className="absolute bottom-4 right-4 inline-flex h-14 w-14 items-center justify-center rounded-full border border-[#b8d4e7] bg-gradient-to-br from-[#0d739d] to-[#08597a] text-[var(--mr-on-action)] shadow-[0_14px_28px_rgba(8,89,122,0.34)] transition hover:scale-[1.02]"
             >
               <Bot className="h-5 w-5" />
             </button>
@@ -1068,40 +1144,39 @@ export function DashboardPage() {
 
   return (
     <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
-      <header className="fixed left-0 right-0 top-0 z-40 h-16 border-b border-[var(--mr-border)] bg-white">
-        <div className="mr-container flex h-full items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">MedRoute</span>
-            <span className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case-Twin Routing</span>
+      <header className="fixed left-0 right-0 top-0 z-40 border-b border-[var(--mr-border)] bg-white/95 shadow-[0_6px_20px_rgba(0,0,0,0.04)] backdrop-blur">
+        <div className="mr-container flex min-h-24 flex-col justify-center gap-2 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">MedRoute</span>
+              <span className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case-Twin Routing</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center rounded-full border border-[var(--mr-border)] px-4 text-[14px] font-medium leading-5 text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)]"
+              >
+                Case History
+              </button>
+              <button
+                type="button"
+                aria-label="Settings"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mr-border)] text-[var(--mr-text-secondary)] transition hover:bg-[var(--mr-bg-subtle)]"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button type="button" className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-              Case History
-            </button>
-            <button
-              type="button"
-              aria-label="Settings"
-              className="inline-flex h-5 w-5 items-center justify-center text-[var(--mr-text-secondary)]"
-            >
-              <Settings className="h-5 w-5" />
-            </button>
-            <span className="inline-flex h-6 items-center gap-2 rounded-full bg-[var(--mr-bg-subtle)] px-2.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--mr-success)]" />
-              <span className="text-xs leading-4 text-[var(--mr-text)]">Demo Mode</span>
-            </span>
+          <div className="flex items-center justify-center">
+            <Stepper step={step} onStepChange={setStep} />
           </div>
         </div>
       </header>
 
-      <div className="fixed left-0 right-0 top-16 z-30 h-14 bg-white">
-        <div className="mr-container flex h-full items-center justify-center">
-          <Stepper step={step} onStepChange={setStep} />
-        </div>
-      </div>
-
       <main
-        className={cn("mr-container h-full pb-6 pt-36", step === 0 ? "overflow-hidden" : "overflow-auto")}
+        className={cn("mr-container h-full pb-6 pt-32", step === 0 ? "overflow-hidden" : "overflow-auto")}
       >
         {step === 0 ? (
           <UploadScreen
