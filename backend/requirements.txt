@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+transformers
+torch
+pillow
+qdrant-client
+python-dotenv
+huggingface_hub
+google-cloud-storage

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ButtonHTMLAttributes } from "react";
+import { useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Bot, Check, FileText, Loader2, MapPin, SendHorizontal, Settings, Sparkles, UploadCloud } from "lucide-react";
 import {
   computeCaseCompletion,
@@ -6,7 +6,9 @@ import {
   mockAnalyzeClinicalNote,
   mockIngestImagingFile,
   mockRespondToAgent,
-  type CaseCardDraft
+  searchByImage,
+  type CaseCardDraft,
+  type MatchItem as ApiMatchItem,
 } from "@/lib/mockUploadApis";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +22,13 @@ interface MatchItem {
   facility: string;
   outcome: string;
   outcomeVariant: OutcomeVariant;
+  image_url?: string;
+  age?: number;
+  gender?: string;
+  pmc_id?: string;
+  article_title?: string;
+  case_text?: string;
+  radiology_view?: string;
 }
 
 interface RouteCenter {
@@ -104,7 +113,7 @@ const routeCenters: RouteCenter[] = [
   }
 ];
 
-function SurfaceCard({ className, children }: { className?: string; children: React.ReactNode }) {
+function SurfaceCard({ className, children }: { className?: string; children: ReactNode }) {
   return <section className={cn("mr-surface", className)}>{children}</section>;
 }
 
@@ -192,7 +201,7 @@ function Stepper({ step, onStepChange }: { step: Step; onStepChange: (next: Step
               className={cn(
                 "inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs leading-4 transition-colors",
                 state === "default" &&
-                  "bg-transparent text-[var(--mr-text-secondary)] hover:bg-[var(--mr-bg-subtle)] hover:text-[var(--mr-text)]",
+                "bg-transparent text-[var(--mr-text-secondary)] hover:bg-[var(--mr-bg-subtle)] hover:text-[var(--mr-text)]",
                 state === "active" && "bg-[var(--mr-action)] font-semibold text-[var(--mr-on-action)]",
                 state === "done" && "bg-[var(--mr-bg-subtle)] text-[var(--mr-text)]"
               )}
@@ -211,12 +220,14 @@ function UploadScreen({
   deIdentify,
   saveToHistory,
   onDeIdentifyChange,
-  onSaveHistoryChange
+  onSaveHistoryChange,
+  onImageFilePicked
 }: {
   deIdentify: boolean;
   saveToHistory: boolean;
   onDeIdentifyChange: (next: boolean) => void;
   onSaveHistoryChange: (next: boolean) => void;
+  onImageFilePicked: (file: File | null) => void;
 }) {
   const imagingInputRef = useRef<HTMLInputElement | null>(null);
   const notesFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -265,6 +276,7 @@ function UploadScreen({
     }
 
     setUploadedImaging({ name: file.name, size: file.size });
+    onImageFilePicked(file);
     setIsIngestingImage(true);
 
     try {
@@ -873,12 +885,18 @@ function MatchCard({
 function MatchesScreen({
   selectedMatch,
   onSelectMatch,
-  onContinueToRoute
+  onContinueToRoute,
+  items,
+  isLoading
 }: {
   selectedMatch: number;
   onSelectMatch: (index: number) => void;
   onContinueToRoute: () => void;
+  items: MatchItem[];
+  isLoading: boolean;
 }) {
+  const selected = items[selectedMatch];
+
   return (
     <div className="grid gap-6 lg:grid-cols-[680px_416px]">
       <div className="space-y-3">
@@ -890,41 +908,69 @@ function MatchesScreen({
             <select className="mr-select h-9 w-40 text-[14px] leading-5">
               <option>Best outcome</option>
             </select>
-            <span className="mr-badge mr-badge--neutral">Top 5</span>
+            <span className="mr-badge mr-badge--neutral">Top {items.length || 5}</span>
           </div>
         </div>
 
-        <div className="space-y-3">
-          {matchItems.map((item, idx) => (
-            <MatchCard
-              key={`${item.diagnosis}-${item.score}`}
-              item={item}
-              selected={idx === selectedMatch}
-              onSelect={() => onSelectMatch(idx)}
-            />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-[var(--mr-text-secondary)]">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p className="text-sm">Generating MedSiglip embedding and searching cases...</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-[var(--mr-text-secondary)]">
+            <p className="text-sm">No matches found. Upload a chest X-ray image to search.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item, idx) => (
+              <MatchCard
+                key={`${item.diagnosis}-${item.score}-${idx}`}
+                item={item}
+                selected={idx === selectedMatch}
+                onSelect={() => onSelectMatch(idx)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
         <SurfaceCard>
           <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Why this match</h2>
-          <ul className="space-y-2 text-[15px] leading-[22px] text-[var(--mr-text)]">
-            <li>Imaging pattern aligns with right hilar mass presentation.</li>
-            <li>Similar patient demographics and clinical history.</li>
-            <li>Outcome-weighted ranking favors complete response cases.</li>
-          </ul>
+          {selected ? (
+            <>
+              <ul className="space-y-2 text-[15px] leading-[22px] text-[var(--mr-text)]">
+                <li>Visual similarity score: <strong>{selected.score}%</strong></li>
+                {selected.age != null && <li>Patient: {selected.age}y {selected.gender ?? ""}</li>}
+                {selected.radiology_view && <li>View: {selected.radiology_view}</li>}
+              </ul>
 
-          <div className="mr-divider" />
+              {selected.image_url && (
+                <img
+                  src={selected.image_url}
+                  alt="Matched X-ray"
+                  className="mt-2 w-full rounded-xl object-cover"
+                  style={{ maxHeight: 200 }}
+                />
+              )}
 
-          <div className="space-y-1">
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Outcome notes</p>
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-              Complete response after chemoradiation, 18-month follow-up.
+              <div className="mr-divider" />
+
+              <div className="space-y-1">
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case summary</p>
+                <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
+                  {selected.case_text ? selected.case_text.slice(0, 200) + "..." : selected.summary}
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">
+              Select a match to see details.
             </p>
-          </div>
+          )}
 
-          <MedButton variant="primary" fullWidth onClick={onContinueToRoute}>
+          <MedButton variant="primary" fullWidth onClick={onContinueToRoute} disabled={items.length === 0}>
             Continue to routing
           </MedButton>
         </SurfaceCard>
@@ -1141,6 +1187,29 @@ export function DashboardPage() {
     "Pediatric ICU": false,
     "3T MRI": true
   });
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [matchResults, setMatchResults] = useState<MatchItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const handleStepChange = async (next: Step) => {
+    // When advancing to the Matches step (2), trigger real search
+    if (next === 2 && uploadedFile) {
+      setStep(next);
+      setIsSearching(true);
+      setSearchError(null);
+      try {
+        const results = await searchByImage(uploadedFile);
+        setMatchResults(results);
+      } catch (err) {
+        setSearchError(err instanceof Error ? err.message : "Search failed");
+      } finally {
+        setIsSearching(false);
+      }
+    } else {
+      setStep(next);
+    }
+  };
 
   return (
     <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
@@ -1184,17 +1253,27 @@ export function DashboardPage() {
             saveToHistory={saveToHistory}
             onDeIdentifyChange={setDeIdentify}
             onSaveHistoryChange={setSaveToHistory}
+            onImageFilePicked={setUploadedFile}
           />
         ) : null}
 
         {step === 1 ? <ReviewScreen tab={reviewTab} onTabChange={setReviewTab} /> : null}
 
         {step === 2 ? (
-          <MatchesScreen
-            selectedMatch={selectedMatch}
-            onSelectMatch={setSelectedMatch}
-            onContinueToRoute={() => setStep(3)}
-          />
+          <>
+            {searchError && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                ⚠️ {searchError} — Make sure the backend is running at localhost:8000.
+              </div>
+            )}
+            <MatchesScreen
+              selectedMatch={selectedMatch}
+              onSelectMatch={setSelectedMatch}
+              onContinueToRoute={() => setStep(3)}
+              items={matchResults}
+              isLoading={isSearching}
+            />
+          </>
         ) : null}
 
         {step === 3 ? (

@@ -1,3 +1,42 @@
+const API_BASE = "http://localhost:8000";
+
+export interface MatchItem {
+  score: number;
+  diagnosis: string;
+  summary: string;
+  facility: string;
+  outcome: string;
+  outcomeVariant: "success" | "warning" | "neutral";
+  image_url: string;
+  age?: number;
+  gender?: string;
+  pmc_id?: string;
+  article_title?: string;
+  journal?: string;
+  year?: string;
+  radiology_view?: string;
+  case_text?: string;
+}
+
+export async function searchByImage(file: File, limit = 5): Promise<MatchItem[]> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("limit", String(limit));
+
+  const response = await fetch(`${API_BASE}/search?limit=${limit}`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Search failed (${response.status}): ${err}`);
+  }
+
+  const data = await response.json() as { matches: MatchItem[]; count: number };
+  return data.matches;
+}
+
 export interface CaseCardDraft {
   patientAge: string;
   patientSex: string;

@@ -28,3 +28,11 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+casetwin/*
+
+*.ipynb
+backend/test.py
+dataset_schema.json
+dataset.json
+backend/__pycache__
