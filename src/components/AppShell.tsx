@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -22,6 +23,12 @@ export function AppShell({ breadcrumb, children }: AppShellProps) {
             {breadcrumb}
           </span>
           <div className="flex items-center gap-2">
+            <Link to="/">
+              <Button size="sm" className="gap-1 bg-blue-600 hover:bg-blue-700 text-white border-0">
+                <Plus className="h-3.5 w-3.5" />
+                New Case
+              </Button>
+            </Link>
             <a href="#" aria-label="Docs placeholder link">
               <Button variant="secondary" size="sm">
                 Docs

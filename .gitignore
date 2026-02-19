@@ -35,4 +35,7 @@ casetwin/*
 backend/test.py
 dataset_schema.json
 dataset.json
-backend/__pycache__
+backend/__pycache__/
+backend/.venv/
+backend/*.pyc
+backend/application_default_credentials.json

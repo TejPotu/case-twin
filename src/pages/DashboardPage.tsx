@@ -1,15 +1,10 @@
-import { useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useRef, useState, useMemo, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Bot, Check, FileText, Loader2, MapPin, SendHorizontal, Settings, Sparkles, UploadCloud } from "lucide-react";
-import {
-  computeCaseCompletion,
-  emptyCaseCardDraft,
-  mockAnalyzeClinicalNote,
-  mockIngestImagingFile,
-  mockRespondToAgent,
-  searchByImage,
-  type CaseCardDraft,
-  type MatchItem as ApiMatchItem,
-} from "@/lib/mockUploadApis";
+import { mockRespondToAgent, searchByImage, type MatchItem as ApiMatchItem } from "@/lib/mockUploadApis";
+import { extractCaseProfile, computeProfileConfidence } from "@/lib/caseProfileUtils";
+import { type CaseProfile } from "@/lib/caseProfileTypes";
+import { CaseProfileView } from "@/components/CaseProfileView";
+import { generateAgenticFollowup } from "@/lib/agenticCopilot";
 import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -232,10 +227,13 @@ function UploadScreen({
   const imagingInputRef = useRef<HTMLInputElement | null>(null);
   const notesFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [draft, setDraft] = useState<CaseCardDraft>(emptyCaseCardDraft);
+
+  // New profile state
+  const [profile, setProfile] = useState<CaseProfile | null>(null);
   const [clinicalNote, setClinicalNote] = useState("");
+  const [imagingFile, setImagingFile] = useState<File | null>(null);
   const [uploadedImaging, setUploadedImaging] = useState<{ name: string; size: number } | null>(null);
-  const [uploadedNoteFile, setUploadedNoteFile] = useState<{ name: string; size: number } | null>(null);
+  const [uploadedNoteFile, setUploadedNoteFile] = useState<{ name: string; size: number; file: File } | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<
     Array<{ id: string; role: "assistant" | "user"; content: string }>
@@ -244,23 +242,31 @@ function UploadScreen({
       id: "welcome",
       role: "assistant",
       content:
-        "Clinical assistant online. Share imaging impressions, symptom timeline, or referral details and I will structure the case profile."
+        "Clinical assistant online. Upload an image or paste clinical notes, then click \"Extract & Build Profile\" to populate the case card."
     }
   ]);
-  const [isIngestingImage, setIsIngestingImage] = useState(false);
-  const [isAnalyzingNotes, setIsAnalyzingNotes] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [isAgentThinking, setIsAgentThinking] = useState(false);
-  const completion = useMemo(() => computeCaseCompletion(draft), [draft]);
 
-  const mergeDraft = (patch: Partial<CaseCardDraft>) => {
-    setDraft((current) => ({
-      ...current,
-      ...patch,
-      currentSymptoms: patch.currentSymptoms
-        ? Array.from(new Set([...current.currentSymptoms, ...patch.currentSymptoms]))
-        : current.currentSymptoms
-    }));
-  };
+  const confidence = profile ? computeProfileConfidence(profile) : null;
+  const confidenceTone =
+    (confidence?.score ?? 0) >= 80
+      ? "text-[var(--mr-success)]"
+      : (confidence?.score ?? 0) >= 50
+        ? "text-[var(--mr-warning)]"
+        : "text-[var(--mr-text)]";
+  const confidenceRingColor =
+    (confidence?.score ?? 0) >= 80
+      ? "var(--mr-success)"
+      : (confidence?.score ?? 0) >= 50
+        ? "var(--mr-warning)"
+        : "var(--mr-action)";
+  const confidenceLabel =
+    (confidence?.score ?? 0) >= 80
+      ? "High completeness"
+      : (confidence?.score ?? 0) >= 50
+        ? "Moderate completeness"
+        : "Low completeness";
 
   const addChatMessage = (role: "assistant" | "user", content: string) => {
     setChatMessages((current) => [
@@ -269,201 +275,192 @@ function UploadScreen({
     ]);
   };
 
+  // ── Imaging upload ──────────────────────────────────────────────────────
   const handleImagingPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
+    if (!file) return;
     setUploadedImaging({ name: file.name, size: file.size });
+    setImagingFile(file);
     onImageFilePicked(file);
-    setIsIngestingImage(true);
-
-    try {
-      const result = await mockIngestImagingFile(file.name);
-      mergeDraft(result.patch);
-      addChatMessage("assistant", result.reply);
-    } finally {
-      setIsIngestingImage(false);
-      event.target.value = "";
-    }
-  };
-
-  const handleNotesFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    setUploadedNoteFile({ name: file.name, size: file.size });
-    addChatMessage(
-      "assistant",
-      `Loaded ${file.name}. Paste the content in Clinical Notes and click Analyze to map fields.`
-    );
+    addChatMessage("assistant", `Image received: ${file.name}. Extracting profile — please wait.`);
+    await runExtraction([file], clinicalNote, uploadedNoteFile?.file ?? null);
     event.target.value = "";
   };
 
-  const handleAnalyzeNotes = async () => {
-    if (!clinicalNote.trim()) {
-      addChatMessage("assistant", "Add or paste clinical notes first, then I can analyze and populate the card.");
+  // ── Notes file attachment ───────────────────────────────────────────────
+  const handleNotesFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadedNoteFile({ name: file.name, size: file.size, file });
+    addChatMessage("assistant", `Loaded ${file.name}. Click "Extract & Build Profile" to map fields.`);
+    event.target.value = "";
+  };
+
+  // ── Core extraction ─────────────────────────────────────────────────────
+  const runExtraction = async (imgs: File[], notes: string, notesFile: File | null) => {
+    setIsExtracting(true);
+    try {
+      const result = await extractCaseProfile(imgs, notes, notesFile);
+      setProfile(result);
+
+      // Agentic followup logic
+      const conf = computeProfileConfidence(result);
+      const followup = generateAgenticFollowup(result, conf.score);
+
+      // Artificial delay for a more natural assistant feel
+      setTimeout(() => {
+        addChatMessage("assistant", followup.message);
+      }, 750);
+
+    } catch {
+      addChatMessage("assistant", "Extraction failed. Try again or check the clinical notes formatting.");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleAnalyzeNotes = () => {
+    if (!clinicalNote.trim() && !uploadedNoteFile) {
+      addChatMessage("assistant", "Add or paste clinical notes first.");
       return;
     }
-
-    setIsAnalyzingNotes(true);
-    try {
-      const result = await mockAnalyzeClinicalNote(clinicalNote);
-      mergeDraft(result.patch);
-      addChatMessage("assistant", result.reply);
-    } finally {
-      setIsAnalyzingNotes(false);
-    }
+    addChatMessage("assistant", "Extracting structured profile from notes…");
+    void runExtraction(imagingFile ? [imagingFile] : [], clinicalNote, uploadedNoteFile?.file ?? null);
   };
 
   const handleSend = async () => {
     const message = chatInput.trim();
-    if (!message) {
-      return;
-    }
-
+    if (!message) return;
     setChatInput("");
     addChatMessage("user", message);
     setIsAgentThinking(true);
-
     try {
-      const result = await mockRespondToAgent(message, draft);
-      mergeDraft(result.patch);
-      addChatMessage("assistant", result.reply);
+      // Simple copilot: if asking about missing fields, answer from profile
+      if (/what is missing|what's missing|missing fields/i.test(message)) {
+        const missing = confidence?.missing ?? [];
+        addChatMessage(
+          "assistant",
+          missing.length === 0
+            ? "All required fields are captured. Ready for review."
+            : `Still missing: ${missing.join(", ")}.`
+        );
+      } else {
+        // Fall back to mock agent for general chat
+        const result = await mockRespondToAgent(message, {
+          patientAge: String(profile?.patient.age_years ?? ""),
+          patientSex: profile?.patient.sex ?? "",
+          presentingConcern: profile?.presentation.chief_complaint ?? "",
+          currentSymptoms: [],
+          suspectedDiagnosis: profile?.assessment.diagnosis_primary ?? "",
+          imagingModality: profile?.study.modality ?? "",
+          imagingFileName: uploadedImaging?.name ?? "",
+          clinicalSummary: profile?.presentation.hpi ?? "",
+          vitals: "",
+          allergies: profile?.patient.allergies ?? "",
+        });
+        addChatMessage("assistant", result.reply);
+      }
     } finally {
       setIsAgentThinking(false);
     }
   };
 
-  const confidenceTone =
-    completion.score >= 80 ? "text-[var(--mr-success)]" : completion.score >= 50 ? "text-[var(--mr-warning)]" : "text-[var(--mr-text)]";
-  const confidenceRingColor =
-    completion.score >= 80 ? "var(--mr-success)" : completion.score >= 50 ? "var(--mr-warning)" : "var(--mr-action)";
-  const confidenceLabel =
-    completion.score >= 80 ? "High completeness" : completion.score >= 50 ? "Moderate completeness" : "Low completeness";
-
-  const renderField = (value: string, placeholder = "Waiting for input") =>
-    value ? (
-      <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">{value}</p>
-    ) : (
-      <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">{placeholder}</p>
-    );
+  const hasInput = !!uploadedImaging || clinicalNote.trim().length > 0;
 
   return (
     <div className="grid h-full min-h-0 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+
+      {/* ── LEFT: Case profile panel ── */}
       <div className="min-h-0 flex flex-col overflow-hidden">
         <SurfaceCard className="h-full min-h-0 overflow-y-auto">
+
+          {/* Header + confidence */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case card draft</p>
-              <h2 className="text-[22px] font-semibold leading-7 text-[var(--mr-text)]">Case profile</h2>
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case card</p>
+              <h2 className="text-[22px] font-semibold leading-7 text-[var(--mr-text)]">Case Profile</h2>
             </div>
             <div className="flex items-center gap-3 rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] px-3 py-2">
               <div
                 role="img"
-                aria-label={`Confidence ${completion.score}%`}
+                aria-label={`Confidence ${confidence?.score ?? 0}%`}
                 className="relative grid h-14 w-14 place-items-center rounded-full"
                 style={{
-                  background: `conic-gradient(${confidenceRingColor} ${completion.score}%, var(--mr-border) ${completion.score}% 100%)`
+                  background: `conic-gradient(${confidenceRingColor} ${confidence?.score ?? 0}%, var(--mr-border) ${confidence?.score ?? 0}% 100%)`
                 }}
               >
                 <div className="grid h-10 w-10 place-items-center rounded-full bg-white">
-                  <p className={cn("text-xs font-semibold leading-4", confidenceTone)}>{completion.score}%</p>
+                  <p className={cn("text-xs font-semibold leading-4", confidenceTone)}>
+                    {confidence?.score ?? 0}%
+                  </p>
                 </div>
               </div>
               <div className="text-right">
                 <p className={cn("text-sm font-semibold leading-5", confidenceTone)}>{confidenceLabel}</p>
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Confidence score</p>
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
+                  {confidence ? `${confidence.filled}/${confidence.total} fields` : "Confidence score"}
+                </p>
               </div>
             </div>
           </div>
 
-          <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-            Confidence reflects structured clinical fields captured from imaging and narrative intake.
-          </p>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Age</p>
-              {renderField(draft.patientAge, "Not captured")}
+          {/* Missing fields */}
+          {confidence && confidence.missing.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[var(--mr-text-secondary)]" />
+                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Missing for stronger confidence</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {confidence.missing.map((f) => (
+                  <span key={f} className="mr-badge mr-badge--warning">{f}</span>
+                ))}
+              </div>
             </div>
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Sex</p>
-              {renderField(draft.patientSex, "Not captured")}
-            </div>
-            <div className="space-y-0.5 sm:col-span-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Primary concern</p>
-              {renderField(draft.presentingConcern, "Waiting for concern from note or chat")}
-            </div>
-            <div className="space-y-0.5 sm:col-span-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Symptoms</p>
-              {draft.currentSymptoms.length > 0 ? (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {draft.currentSymptoms.map((symptom) => (
-                    <span key={symptom} className="mr-badge mr-badge--neutral">
-                      {symptom}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[15px] leading-[22px] text-[var(--mr-text-secondary)]">
-                  Waiting for symptom extraction
-                </p>
-              )}
-            </div>
-            <div className="space-y-0.5 sm:col-span-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Suspected diagnosis</p>
-              {renderField(draft.suspectedDiagnosis, "No diagnostic hypothesis yet")}
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Imaging modality</p>
-              {renderField(draft.imagingModality, "Awaiting imaging upload")}
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Imaging file</p>
-              {renderField(draft.imagingFileName, "No file attached")}
-            </div>
-            <div className="space-y-0.5 sm:col-span-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Clinical summary</p>
-              {renderField(draft.clinicalSummary, "Summary appears after note analysis")}
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Vitals</p>
-              {renderField(draft.vitals, "Optional")}
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Allergies</p>
-              {renderField(draft.allergies, "Optional")}
-            </div>
-          </div>
+          )}
+          {confidence && confidence.missing.length === 0 && (
+            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">All required fields captured. Ready for review.</p>
+          )}
 
           <div className="mr-divider" />
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-[var(--mr-text-secondary)]" />
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Missing for stronger confidence</p>
+          {/* Extraction loading skeleton */}
+          {isExtracting ? (
+            <div className="space-y-4 animate-pulse">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="rounded-2xl border border-[var(--mr-border)] p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="h-7 w-7 rounded-lg bg-[var(--mr-border)]" />
+                    <div className="h-4 w-28 rounded bg-[var(--mr-border)]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-full rounded bg-[var(--mr-border)]" />
+                    <div className="h-3 w-3/4 rounded bg-[var(--mr-border)]" />
+                  </div>
+                </div>
+              ))}
             </div>
-            {completion.missing.length === 0 ? (
-              <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-                Required fields captured. Ready for review.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {completion.missing.map((missingField) => (
-                  <span key={missingField} className="mr-badge mr-badge--warning">
-                    {missingField}
-                  </span>
-                ))}
+          ) : profile ? (
+            /* Rich profile view — all 9 sections */
+            <CaseProfileView profile={profile} />
+          ) : (
+            /* Empty state */
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] py-12 text-center">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-[var(--mr-border)] bg-white shadow-sm">
+                <Sparkles className="h-5 w-5 text-[var(--mr-text-secondary)]" />
               </div>
-            )}
-          </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-[var(--mr-text)]">No profile yet</p>
+                <p className="text-xs text-[var(--mr-text-secondary)] max-w-[200px]">
+                  Upload an image or paste clinical notes, then click "Extract & Build Profile".
+                </p>
+              </div>
+            </div>
+          )}
         </SurfaceCard>
       </div>
 
+      {/* ── RIGHT: Intake + Chat panel ── */}
       <div className="relative min-h-0 flex flex-col overflow-hidden">
         {isChatOpen ? (
           <SurfaceCard className="h-full min-h-0 gap-0 overflow-hidden border border-[var(--mr-border)] bg-gradient-to-b from-white to-[var(--mr-bg-subtle)] p-0 shadow-[0_14px_30px_rgba(15,67,102,0.12)]">
@@ -539,7 +536,7 @@ function UploadScreen({
                       void handleSend();
                     }
                   }}
-                  placeholder="Enter clinical detail, e.g. '52M with hemoptysis and mediastinal LAD on CT'"
+                  placeholder="Ask about missing fields, diagnosis, or case details…"
                 />
                 <MedButton variant="primary" size="sm" onClick={() => void handleSend()} disabled={isAgentThinking}>
                   <SendHorizontal className="h-4 w-4" />
@@ -551,13 +548,14 @@ function UploadScreen({
         ) : (
           <>
             <SurfaceCard className="min-h-0 overflow-y-auto border border-[var(--mr-border)] bg-white shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+              {/* Workspace header */}
               <div className="rounded-2xl border border-[var(--mr-border)] bg-gradient-to-br from-[var(--mr-bg-subtle)] to-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Intake workspace</p>
                     <h2 className="text-[18px] font-semibold leading-6 text-[var(--mr-text)]">Clinical Context Intake</h2>
                     <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">
-                      Capture radiology studies, physician narrative, and privacy controls for downstream triage.
+                      Capture radiology studies and physician narrative to populate the case profile.
                     </p>
                   </div>
                   <span className="inline-flex h-7 items-center rounded-full border border-[var(--mr-border)] bg-white px-3 text-xs leading-4 text-[var(--mr-text-secondary)]">
@@ -576,6 +574,7 @@ function UploadScreen({
                 </div>
               </div>
 
+              {/* Radiology packet */}
               <div className="rounded-2xl border border-[var(--mr-border)] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -596,21 +595,18 @@ function UploadScreen({
                   <input
                     ref={imagingInputRef}
                     type="file"
-                    accept=".dcm,.png,.jpg,.jpeg"
+                    accept=".dcm,.png,.jpg,.jpeg,.webp"
                     className="hidden"
                     onChange={handleImagingPick}
                   />
                   <button
                     type="button"
                     onClick={() => imagingInputRef.current?.click()}
-                    disabled={isIngestingImage}
+                    disabled={isExtracting}
                     className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--mr-border)] bg-white px-3 text-[13px] font-medium text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isIngestingImage ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing study...
-                      </>
+                    {isExtracting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Processing…</>
                     ) : (
                       "Attach imaging study"
                     )}
@@ -628,6 +624,7 @@ function UploadScreen({
                 ) : null}
               </div>
 
+              {/* Clinical narrative */}
               <div className="rounded-2xl border border-[var(--mr-border)] p-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -643,7 +640,7 @@ function UploadScreen({
                   <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Narrative source text</p>
                   <textarea
                     className="mr-textarea min-h-[220px]"
-                    placeholder="Example: 52-year-old with persistent hemoptysis, unintentional weight loss, and right hilar mass noted on CT chest..."
+                    placeholder="Example: 69-year-old female with hypertension, type 2 diabetes, atrial fibrillation scheduled for liver transplantation. Chest X-ray shows scimitar sign…"
                     value={clinicalNote}
                     onChange={(event) => setClinicalNote(event.target.value)}
                   />
@@ -666,28 +663,26 @@ function UploadScreen({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleAnalyzeNotes()}
-                    disabled={isAnalyzingNotes}
+                    onClick={handleAnalyzeNotes}
+                    disabled={isExtracting || (!clinicalNote.trim() && !uploadedNoteFile)}
                     className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--mr-action)] px-3 text-[13px] font-medium text-[var(--mr-on-action)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isAnalyzingNotes ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Extracting findings...
-                      </>
+                    {isExtracting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Extracting…</>
                     ) : (
-                      "Extract structured findings"
+                      "Extract & Build Profile"
                     )}
                   </button>
                 </div>
 
                 {uploadedNoteFile ? (
                   <p className="pt-2 text-xs leading-4 text-[var(--mr-text-secondary)]">
-                    Attached narrative document: {uploadedNoteFile.name}
+                    Attached document: {uploadedNoteFile.name}
                   </p>
                 ) : null}
               </div>
 
+              {/* Privacy & retention */}
               <div className="rounded-2xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] p-4">
                 <h3 className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">Privacy and retention</h3>
                 <p className="pt-1 text-xs leading-4 text-[var(--mr-text-secondary)]">
@@ -707,6 +702,8 @@ function UploadScreen({
                 </div>
               </div>
             </SurfaceCard>
+
+            {/* Chat FAB */}
             <button
               type="button"
               onClick={() => setIsChatOpen(true)}
@@ -721,6 +718,7 @@ function UploadScreen({
     </div>
   );
 }
+
 
 function ReviewScreen({
   tab,
