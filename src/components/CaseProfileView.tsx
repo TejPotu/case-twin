@@ -40,36 +40,26 @@ import {
 function SectionCard({
     icon,
     title,
-    accent = "blue",
+    accent = "slate",
     children,
     className,
 }: {
     icon: React.ReactNode;
     title: string;
-    accent?: "blue" | "emerald" | "amber" | "rose" | "violet" | "slate" | "cyan";
+    accent?: string;
     children: React.ReactNode;
     className?: string;
 }) {
-    const accentMap = {
-        blue: "bg-blue-50   text-blue-600   border-blue-100",
-        emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
-        amber: "bg-amber-50  text-amber-600  border-amber-100",
-        rose: "bg-rose-50   text-rose-600   border-rose-100",
-        violet: "bg-violet-50 text-violet-600 border-violet-100",
-        slate: "bg-slate-50  text-slate-500  border-slate-100",
-        cyan: "bg-cyan-50   text-cyan-600   border-cyan-100",
-    };
-
     return (
-        <div className={cn("rounded-2xl border border-slate-200/80 bg-white shadow-sm", className)}>
-            <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-                <span className={cn("inline-flex h-7 w-7 items-center justify-center rounded-lg border", accentMap[accent])}>
+        <section className={cn("mb-8 border-b border-zinc-100 pb-8 last:border-0 last:pb-0", className)}>
+            <div className="flex items-center gap-2.5 mb-4">
+                <span className="text-zinc-500 flex items-center justify-center h-6 w-6 rounded-md bg-zinc-100 border border-zinc-200/60">
                     {icon}
                 </span>
-                <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+                <h3 className="text-[16px] font-semibold text-zinc-900 tracking-tight">{title}</h3>
             </div>
-            <div className="px-4 py-4 space-y-3">{children}</div>
-        </div>
+            <div className="space-y-4 pl-[34px]">{children}</div>
+        </section>
     );
 }
 
@@ -83,35 +73,35 @@ function Field({
     wide?: boolean;
 }) {
     return (
-        <div className={cn("space-y-0.5", wide && "col-span-2")}>
-            <p className="text-[11px] uppercase tracking-wide font-medium text-slate-400">{label}</p>
-            <div className="text-[14px] leading-5 text-slate-800">{value}</div>
+        <div className={cn("space-y-1", wide && "col-span-2")}>
+            <p className="text-[13px] font-medium text-zinc-500">{label}</p>
+            <div className="text-[14px] leading-relaxed text-zinc-900">{value}</div>
         </div>
     );
 }
 
 function Chip({ label, variant = "neutral" }: { label: string; variant?: "neutral" | "primary" | "success" | "warning" | "danger" }) {
     const map = {
-        neutral: "bg-slate-100 text-slate-600 border-slate-200",
-        primary: "bg-blue-100  text-blue-700  border-blue-200",
-        success: "bg-emerald-100 text-emerald-700 border-emerald-200",
-        warning: "bg-amber-100 text-amber-700 border-amber-200",
-        danger: "bg-rose-100  text-rose-700  border-rose-200",
+        neutral: "bg-zinc-100 text-zinc-700",
+        primary: "bg-blue-50/80 text-blue-700",
+        success: "bg-emerald-50/80 text-emerald-700",
+        warning: "bg-amber-50/80 text-amber-700",
+        danger: "bg-rose-50/80 text-rose-700",
     };
     return (
-        <span className={cn("inline-flex items-center h-6 rounded-full border px-2.5 text-[11px] font-medium", map[variant])}>
+        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-[12px] font-medium", map[variant])}>
             {label}
         </span>
     );
 }
 
 function YesNoBadge({ value }: { value: string | null }) {
-    if (!value) return <span className="text-slate-400 text-sm">—</span>;
+    if (!value) return <span className="text-zinc-400 text-[14px]">—</span>;
     const isYes = value.toLowerCase() === "yes";
     const isNo = value.toLowerCase() === "no";
-    if (isYes) return <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-medium"><CheckCircle2 className="h-3.5 w-3.5" />{value}</span>;
-    if (isNo) return <span className="inline-flex items-center gap-1 text-slate-500 text-sm font-medium"><XCircle className="h-3.5 w-3.5" />{value}</span>;
-    return <span className="text-slate-700 text-sm">{value}</span>;
+    if (isYes) return <span className="inline-flex items-center gap-1.5 text-zinc-900 text-[14px] font-medium"><CheckCircle2 className="h-4 w-4 text-emerald-500" />{value}</span>;
+    if (isNo) return <span className="inline-flex items-center gap-1.5 text-zinc-500 text-[14px] font-medium"><XCircle className="h-4 w-4 text-zinc-400" />{value}</span>;
+    return <span className="text-zinc-900 text-[14px]">{value}</span>;
 }
 
 function isEmpty(val: any): boolean {
@@ -173,7 +163,7 @@ function PresentationSection({ pres }: { pres: PresentationInfo }) {
                 {!isEmpty(pres.symptom_duration) && <Field label="Symptom Duration" value={pres.symptom_duration} />}
                 {!isEmpty(pres.hpi) && (
                     <Field label="HPI" value={
-                        <p className="text-[13px] leading-5 text-slate-700 bg-slate-50 rounded-xl p-3 border border-slate-100">{pres.hpi}</p>
+                        <div className="text-[14px] leading-relaxed text-zinc-800 border-l-[3px] border-zinc-200 pl-3 py-1 mt-1 break-words">{pres.hpi}</div>
                     } />
                 )}
                 {!isEmpty(pres.pmh) && <Field label="PMH" value={pres.pmh} />}
@@ -193,14 +183,14 @@ function StudySection({ study }: { study: StudyInfo }) {
         <SectionCard icon={<FileImage className="h-4 w-4" />} title="Imaging Study" accent="cyan">
             <div className="space-y-3">
                 {!isEmpty(study.image_url) && (
-                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <div className="overflow-hidden rounded-xl border border-zinc-200/60 bg-zinc-50/50">
                         <img
                             src={study.image_url as string}
                             alt={study.caption ?? "Medical image"}
-                            className="w-full max-h-64 object-contain bg-slate-900"
+                            className="w-full max-h-64 object-contain"
                         />
                         {!isEmpty(study.caption) && (
-                            <p className="px-3 py-2 text-[12px] text-slate-500 bg-slate-50 border-t border-slate-100">{study.caption}</p>
+                            <p className="px-3 py-2 text-[12px] text-zinc-500 bg-white border-t border-zinc-100">{study.caption}</p>
                         )}
                     </div>
                 )}
@@ -233,9 +223,9 @@ function AssessmentSection({ assessment }: { assessment: AssessmentInfo }) {
         <SectionCard icon={<Microscope className="h-4 w-4" />} title="Assessment" accent="emerald">
             <div className="space-y-3">
                 {!isEmpty(assessment.diagnosis_primary) && (
-                    <div className="rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-wide font-medium text-emerald-500 mb-0.5">Primary Diagnosis</p>
-                        <p className="text-[15px] font-semibold text-emerald-800 capitalize">{assessment.diagnosis_primary}</p>
+                    <div className="rounded-xl bg-zinc-50/80 border border-zinc-200/80 px-4 py-3">
+                        <p className="text-[13px] font-medium text-zinc-500 mb-1">Primary Diagnosis</p>
+                        <p className="text-[15px] font-semibold text-zinc-900 capitalize">{assessment.diagnosis_primary}</p>
                     </div>
                 )}
 
@@ -249,10 +239,10 @@ function AssessmentSection({ assessment }: { assessment: AssessmentInfo }) {
 
                 {!isEmpty(assessment.differential) && (
                     <Field label="Differential" value={
-                        <ul className="space-y-0.5">
+                        <ul className="space-y-1.5 mt-1">
                             {assessment.differential.map((d) => (
-                                <li key={d} className="flex items-center gap-1.5 text-[13px] text-slate-700">
-                                    <ChevronRight className="h-3 w-3 text-slate-400 shrink-0" /> {d}
+                                <li key={d} className="flex items-start gap-2 text-[14px] text-zinc-800">
+                                    <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-zinc-400 shrink-0" /> {d}
                                 </li>
                             ))}
                         </ul>
@@ -278,9 +268,9 @@ function AssessmentSection({ assessment }: { assessment: AssessmentInfo }) {
 function FindingRow({ label, value }: { label: string; value: string | null }) {
     if (isEmpty(value)) return null;
     return (
-        <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-            <span className="text-[12px] text-slate-500">{label}</span>
-            <span className="text-[13px] font-medium text-slate-700">{value}</span>
+        <div className="flex items-center justify-between py-1.5 border-b border-zinc-100 last:border-0">
+            <span className="text-[13px] text-zinc-500">{label}</span>
+            <span className="text-[13px] font-medium text-zinc-800">{value}</span>
         </div>
     );
 }
@@ -304,8 +294,8 @@ function FindingsSection({ findings }: { findings: FindingsInfo }) {
         <SectionCard icon={<Wind className="h-4 w-4" />} title="Findings" accent="slate">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {hasLungs && (
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm">
-                        <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-400 mb-2">Lungs</p>
+                    <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-4 shadow-sm">
+                        <p className="text-[13px] font-semibold text-zinc-700 mb-2">Lungs</p>
                         <FindingRow label="Consolidation" value={lungs.consolidation_present} />
                         <FindingRow label="Atelectasis" value={lungs.atelectasis_present} />
                         <FindingRow label="Edema" value={lungs.edema_present} />
@@ -316,8 +306,8 @@ function FindingsSection({ findings }: { findings: FindingsInfo }) {
                 )}
 
                 {hasPleura && (
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm">
-                        <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-400 mb-2">Pleura</p>
+                    <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-4 shadow-sm">
+                        <p className="text-[13px] font-semibold text-zinc-700 mb-2">Pleura</p>
                         <FindingRow label="Effusion" value={pleura.effusion_present} />
                         {pleura.effusion_side && pleura.effusion_side !== "unknown" && (
                             <FindingRow label="Effusion side" value={pleura.effusion_side} />
@@ -327,21 +317,21 @@ function FindingsSection({ findings }: { findings: FindingsInfo }) {
                 )}
 
                 {hasCardio && (
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm">
-                        <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-400 mb-2">Cardiomediastinal</p>
+                    <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-4 shadow-sm">
+                        <p className="text-[13px] font-semibold text-zinc-700 mb-2">Cardiomediastinal</p>
                         <FindingRow label="Cardiomegaly" value={cardiomediastinal.cardiomegaly} />
                         <FindingRow label="Mediastinal widening" value={cardiomediastinal.mediastinal_widening} />
                     </div>
                 )}
 
                 {hasDevices && (
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 shadow-sm">
-                        <p className="text-[11px] uppercase tracking-wide font-semibold text-slate-400 mb-2">Devices / Lines</p>
+                    <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-4 shadow-sm">
+                        <p className="text-[13px] font-semibold text-zinc-700 mb-2">Devices / Lines</p>
                         <FindingRow label="Present" value={devices.lines_tubes_present} />
                         {!isEmpty(devices.device_list) && (
                             <div className="pt-1.5 flex flex-wrap gap-1">
                                 {devices.device_list.map((d) => (
-                                    <span key={d} className="inline-flex items-center h-5 rounded-full bg-slate-200 text-slate-600 px-2 text-[11px] font-medium">{d}</span>
+                                    <span key={d} className="inline-flex items-center rounded-md bg-zinc-200/60 text-zinc-700 px-2 py-0.5 text-[12px] font-medium">{d}</span>
                                 ))}
                             </div>
                         )}
@@ -361,16 +351,16 @@ function SummarySection({ summary }: { summary: SummaryInfo }) {
         <SectionCard icon={<ClipboardList className="h-4 w-4" />} title="Summary" accent="amber">
             <div className="space-y-3">
                 {!isEmpty(summary.one_liner) && (
-                    <p className="text-[14px] leading-5 text-slate-700 font-medium italic">"{summary.one_liner}"</p>
+                    <p className="text-[15px] leading-relaxed text-zinc-800 italic border-l-[3px] border-zinc-300 pl-3 py-1">{summary.one_liner}</p>
                 )}
 
                 {!isEmpty(summary.key_points) && (
                     <div>
-                        <p className="text-[11px] uppercase tracking-wide font-medium text-slate-400 mb-1.5">Key Points</p>
+                        <p className="text-[13px] font-medium text-zinc-500 mb-2">Key Points</p>
                         <ul className="space-y-1.5">
                             {summary.key_points.map((kp) => (
-                                <li key={kp} className="flex items-start gap-2 text-[13px] text-slate-700">
-                                    <Activity className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                <li key={kp} className="flex items-start gap-2 text-[14px] text-zinc-800">
+                                    <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-zinc-400 shrink-0" />
                                     {kp}
                                 </li>
                             ))}
@@ -380,13 +370,13 @@ function SummarySection({ summary }: { summary: SummaryInfo }) {
 
                 {!isEmpty(summary.red_flags) && (
                     <div>
-                        <p className="text-[11px] uppercase tracking-wide font-medium text-rose-400 mb-1.5 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> Red Flags
+                        <p className="text-[13px] font-medium text-rose-500 mb-2 flex items-center gap-1.5">
+                            <AlertTriangle className="h-3.5 w-3.5" /> Red Flags
                         </p>
                         <ul className="space-y-1.5">
                             {summary.red_flags.map((rf) => (
-                                <li key={rf} className="flex items-start gap-2 text-[13px] text-rose-700 bg-rose-50 rounded-lg px-3 py-1.5 border border-rose-100">
-                                    <Zap className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-0.5" />
+                                <li key={rf} className="flex items-start gap-2 text-[14px] text-rose-700 bg-rose-50/50 rounded-xl px-4 py-2 border border-rose-100">
+                                    <Zap className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
                                     {rf}
                                 </li>
                             ))}
@@ -407,10 +397,10 @@ function OutcomeSection({ outcome }: { outcome: OutcomeInfo }) {
             <div className="flex items-start gap-3">
                 {!isEmpty(outcome.success) && (
                     <span className={cn(
-                        "inline-flex items-center gap-1.5 h-7 rounded-full border px-3 text-sm font-semibold shrink-0",
+                        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[14px] font-medium shrink-0",
                         outcome.success === "yes"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : "bg-rose-50 text-rose-700 border-rose-200"
+                            ? "bg-emerald-50/80 text-emerald-700"
+                            : "bg-rose-50/80 text-rose-700"
                     )}>
                         {outcome.success === "yes"
                             ? <CheckCircle2 className="h-3.5 w-3.5" />
@@ -419,7 +409,7 @@ function OutcomeSection({ outcome }: { outcome: OutcomeInfo }) {
                     </span>
                 )}
                 {!isEmpty(outcome.detail) && (
-                    <p className="text-[13px] leading-5 text-slate-700">{outcome.detail}</p>
+                    <p className="text-[14px] leading-relaxed text-zinc-800 py-1">{outcome.detail}</p>
                 )}
             </div>
         </SectionCard>
@@ -434,24 +424,24 @@ function ProvenanceSection({ prov }: { prov: ProvenanceInfo }) {
         <SectionCard icon={<BookOpen className="h-4 w-4" />} title="Source / Provenance" accent="slate">
             <div className="space-y-2">
                 {prov.article_title && (
-                    <p className="text-[13px] font-medium text-slate-800 leading-5">{prov.article_title}</p>
+                    <p className="text-[14px] font-medium text-zinc-900 leading-relaxed">{prov.article_title}</p>
                 )}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-500">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-zinc-500">
                     {prov.journal && <span>{prov.journal}</span>}
                     {prov.year && <span>{prov.year}</span>}
                     {prov.pmid && <span>PMID: {prov.pmid}</span>}
                 </div>
                 {prov.authors.length > 0 && (
-                    <p className="text-[12px] text-slate-500">{prov.authors.join(", ")}</p>
+                    <p className="text-[13px] text-zinc-500">{prov.authors.join(", ")}</p>
                 )}
                 {prov.doi && (
                     <a
                         href={`https://doi.org/${prov.doi}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[12px] text-blue-600 hover:text-blue-700 transition-colors"
+                        className="inline-flex items-center gap-1 text-[13px] text-zinc-500 hover:text-zinc-900 transition-colors underline underline-offset-2"
                     >
-                        DOI: {prov.doi} <ExternalLink className="h-3 w-3" />
+                        DOI: {prov.doi} <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                 )}
                 {prov.source_url && !prov.doi && (
@@ -459,9 +449,9 @@ function ProvenanceSection({ prov }: { prov: ProvenanceInfo }) {
                         href={prov.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[12px] text-blue-600 hover:text-blue-700 transition-colors"
+                        className="inline-flex items-center gap-1 text-[13px] text-zinc-500 hover:text-zinc-900 transition-colors underline underline-offset-2"
                     >
-                        View source <ExternalLink className="h-3 w-3" />
+                        View source <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                 )}
             </div>

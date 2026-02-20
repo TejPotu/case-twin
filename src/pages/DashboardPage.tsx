@@ -190,7 +190,7 @@ function OutcomeBadge({ variant, label }: { variant: OutcomeVariant; label: stri
   return (
     <span
       className={cn(
-        "mr-badge",
+        "mr-badge border border-zinc-200",
         variant === "success" && "mr-badge--success",
         variant === "warning" && "mr-badge--warning",
         variant === "neutral" && "mr-badge--neutral"
@@ -289,7 +289,7 @@ function UploadScreen({
   return (
     <div
       ref={containerRef}
-      className="flex h-full min-h-[calc(100vh-120px)] gap-0"
+      className="flex h-full min-h-[calc(100vh-120px)] gap-0 pt-6"
       style={{ overflow: "hidden" }}
     >
       {/* ── Left: Live Case Profile ── */}
@@ -297,84 +297,59 @@ function UploadScreen({
         className="flex flex-col gap-4 overflow-y-auto pr-3"
         style={{ width: `${leftPct}%`, minWidth: 0 }}
       >
-        {/* Uploaded image preview */}
-        {profile?.study.image_url && (
-          <SurfaceCard>
-            <p className="mr-label mb-2">Uploaded Imaging</p>
-            <div className="overflow-hidden rounded-xl border border-[var(--mr-border)] bg-[var(--mr-bg-subtle)]">
-              <img
-                src={profile.study.image_url}
-                alt="Uploaded imaging study"
-                className="w-full object-contain"
-                style={{ maxHeight: "220px" }}
-              />
-            </div>
-            {profile.study.modality && (
-              <p className="mt-2 text-xs text-[var(--mr-text-secondary)]">
-                {profile.study.modality}{profile.study.body_region ? ` · ${profile.study.body_region}` : ""}
-              </p>
-            )}
-          </SurfaceCard>
-        )}
 
-        {/* Confidence summary card */}
-        <SurfaceCard label="Case card" title="Case Profile">
-          <div className="flex items-center gap-5 pb-2">
-            {/* Ring */}
-            <div className="relative h-20 w-20 shrink-0">
-              <svg className="h-20 w-20 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="34" fill="none" stroke="var(--mr-border)" strokeWidth="6" />
-                <circle
-                  cx="40" cy="40" r="34" fill="none"
-                  stroke={
-                    conf.score >= 80 ? "var(--mr-success)"
-                      : conf.score >= 50 ? "var(--mr-warning)"
-                        : "var(--mr-action)"
-                  }
-                  strokeWidth="6"
-                  strokeDasharray={`${(conf.score / 100) * 213.6} 213.6`}
-                  strokeLinecap="round"
-                  className="transition-all duration-700"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xl font-bold leading-none text-[var(--mr-text)]">{conf.score}%</span>
-                <span className="text-[10px] font-medium text-[var(--mr-text-secondary)]">confidence</span>
+        {/* Minimalist Overview Card */}
+        <div className="flex flex-col p-5 rounded-xl border border-zinc-200 bg-white shadow-sm mb-2">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-[15px] font-semibold text-zinc-900">Case Extraction Quality</h2>
+              <p className="text-[13px] text-zinc-500 mt-0.5">Automated profile generation from evidence.</p>
+            </div>
+            <span className={cn(
+              "text-[12px] font-medium px-2 py-0.5 rounded-md",
+              conf.score >= 80 ? "bg-emerald-50 text-emerald-700" : conf.score >= 50 ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-700"
+            )}>
+              {conf.score >= 80 ? "High" : conf.score >= 50 ? "Moderate" : "Low"} Completeness
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4 bg-zinc-50/50 p-3 rounded-lg border border-zinc-100">
+            <div className="flex-1">
+              <div className="w-full h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                <div className="h-full transition-all duration-700 rounded-full" style={{ width: `${conf.score}%`, backgroundColor: conf.score >= 80 ? '#10b981' : conf.score >= 50 ? '#f59e0b' : '#3f3f46' }} />
               </div>
             </div>
-            {/* Stats */}
-            <div>
-              <p className="text-sm font-semibold text-[var(--mr-text)]">
-                {conf.score >= 80 ? "High completeness" : conf.score >= 50 ? "Moderate completeness" : "Low completeness"}
-              </p>
-              <p className="mt-0.5 text-xs text-[var(--mr-text-secondary)]">
-                {conf.filled} of {conf.total} fields captured
-              </p>
-              {conf.missing.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {conf.missing.slice(0, 4).map(m => (
-                    <span key={m} className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
-                      {m}
-                    </span>
-                  ))}
-                  {conf.missing.length > 4 && (
-                    <span className="rounded-full bg-[var(--mr-bg-subtle)] px-2 py-0.5 text-[10px] text-[var(--mr-text-secondary)]">
-                      +{conf.missing.length - 4} more
-                    </span>
-                  )}
-                </div>
-              )}
+            <div className="text-[13px] text-zinc-600 shrink-0">
+              <span className="font-semibold text-zinc-900">{conf.score}%</span> extracted ({conf.filled}/{conf.total})
             </div>
           </div>
-        </SurfaceCard>
+
+          {conf.missing.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-zinc-100">
+              <p className="text-[12px] font-medium text-zinc-500 mb-2">Missing details:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {conf.missing.slice(0, 6).map(m => (
+                  <span key={m} className="px-2 py-0.5 rounded-md border border-zinc-200/60 bg-zinc-50 text-[11px] text-zinc-600 font-medium">
+                    {m}
+                  </span>
+                ))}
+                {conf.missing.length > 6 && (
+                  <span className="px-2 py-0.5 text-[11px] text-zinc-400 font-medium">+{conf.missing.length - 6} more</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Live profile fields */}
         {profile ? (
-          <CaseProfileView profile={profile} />
+          <div className="rounded-xl border border-zinc-200/80 bg-white p-6 shadow-sm mb-8 relative">
+            <CaseProfileView profile={profile} />
+          </div>
         ) : (
           <SurfaceCard>
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--mr-bg-subtle)]">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--mr-bg-subtle)] border border-[var(--mr-border)]">
                 <Sparkles className="h-7 w-7 text-[var(--mr-text-secondary)]" />
               </div>
               <p className="text-sm font-medium text-[var(--mr-text-secondary)]">No profile yet</p>
@@ -643,7 +618,7 @@ function MatchesScreen({
                 <img
                   src={selected.image_url}
                   alt="Matched X-ray"
-                  className="mt-2 w-full rounded-xl object-cover"
+                  className="mt-2 w-full rounded-md object-cover border border-zinc-200"
                   style={{ maxHeight: 200 }}
                 />
               )}
@@ -706,8 +681,8 @@ function RouteScreen({
   return (
     <div className="grid gap-6 lg:grid-cols-[680px_416px]">
       <div className="space-y-4">
-        <SurfaceCard className="h-80">
-          <div className="relative h-full rounded-xl bg-[#F3F4F6]">
+        <SurfaceCard className="h-80 relative overflow-hidden p-0 border-zinc-200">
+          <div className="absolute inset-0 bg-[#F3F4F6]">
             <MapPin className="absolute left-[20%] top-[28%] h-5 w-5 text-[var(--mr-text)]" />
             <MapPin className="absolute left-[46%] top-[42%] h-5 w-5 text-[var(--mr-text)]" />
             <MapPin className="absolute left-[72%] top-[34%] h-5 w-5 text-[var(--mr-text)]" />
@@ -783,7 +758,7 @@ function MemoScreen() {
   return (
     <div className="grid gap-6 lg:grid-cols-[680px_416px]">
       <div className="space-y-4">
-        <SurfaceCard className="gap-4 p-8 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+        <SurfaceCard className="gap-4 p-8">
           <div className="space-y-1">
             <h1 className="text-[28px] font-semibold leading-[34px] tracking-[-0.01em] text-[var(--mr-text)]">
               Transfer Memo

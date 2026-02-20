@@ -4,17 +4,18 @@
 
 @layer base {
   :root {
-    --mr-text: #102738;
-    --mr-text-secondary: #5b7388;
-    --mr-border: #cddfed;
-    --mr-page: #edf5fb;
-    --mr-bg-subtle: #f5faff;
-    --mr-action: #0a678f;
-    --mr-on-action: #f7fcff;
-    --mr-success: #0f8b6f;
-    --mr-warning: #a36d1f;
-    --mr-error: #b53c4f;
+    --mr-text: #111827;
+    --mr-text-secondary: #6B7280;
+    --mr-border: #E5E7EB;
+    --mr-page: #ffffff;
+    --mr-bg-subtle: #F9FAFB;
+    --mr-action: #2563EB;
+    --mr-on-action: #ffffff;
+    --mr-success: #059669;
+    --mr-warning: #D97706;
+    --mr-error: #DC2626;
     font-family:
+      "Inter",
       "SF Pro Text",
       "SF Pro Display",
       -apple-system,
@@ -37,10 +38,7 @@
 
   body {
     margin: 0;
-    background:
-      radial-gradient(circle at 8% 0%, rgba(176, 217, 240, 0.3), transparent 40%),
-      radial-gradient(circle at 92% 100%, rgba(194, 228, 246, 0.28), transparent 44%),
-      var(--mr-page);
+    background: var(--mr-page);
     color: var(--mr-text);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -57,11 +55,11 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 20px;
-    border-radius: 16px;
+    padding: 24px;
+    border-radius: 8px;
     border: 1px solid var(--mr-border);
-    background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
-    box-shadow: 0 8px 22px rgba(12, 72, 106, 0.08);
+    background: #ffffff;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
   .mr-btn {
@@ -93,17 +91,17 @@
   }
 
   .mr-btn--primary {
-    background: linear-gradient(135deg, #0d739d 0%, #095d81 100%);
-    border-color: #08597a;
-    color: var(--mr-on-action);
-    font-weight: 600;
+    background: #111827;
+    border-color: #111827;
+    color: #ffffff;
+    font-weight: 500;
   }
 
   .mr-btn--secondary {
-    background: #f8fcff;
+    background: #ffffff;
     border-color: var(--mr-border);
     color: var(--mr-text);
-    font-weight: 400;
+    font-weight: 500;
   }
 
   .mr-btn--tertiary {
@@ -132,11 +130,11 @@
   .mr-textarea {
     width: 100%;
     border: 1px solid var(--mr-border);
-    border-radius: 12px;
-    background: #fbfeff;
+    border-radius: 6px;
+    background: #ffffff;
     color: var(--mr-text);
-    font-size: 15px;
-    line-height: 22px;
+    font-size: 14px;
+    line-height: 20px;
     padding: 0 12px;
   }
 
@@ -177,8 +175,8 @@
   }
 
   .mr-checkbox {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     border: 1px solid var(--mr-border);
     border-radius: 4px;
     display: inline-flex;
@@ -199,25 +197,26 @@
     align-items: center;
     justify-content: center;
     height: 24px;
-    border-radius: 999px;
-    padding: 0 10px;
+    border-radius: 6px;
+    padding: 0 8px;
     font-size: 12px;
     line-height: 16px;
+    font-weight: 500;
     white-space: nowrap;
   }
 
   .mr-badge--success {
-    background: #e9f9f4;
+    background: #ECFDF5;
     color: var(--mr-success);
   }
 
   .mr-badge--warning {
-    background: #fff8ea;
+    background: #FFFBEB;
     color: var(--mr-warning);
   }
 
   .mr-badge--neutral {
-    background: #eaf4fb;
+    background: #F3F4F6;
     color: var(--mr-text-secondary);
   }
 
