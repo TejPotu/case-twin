@@ -6,6 +6,7 @@ GET  /health   — health check.
 """
 
 import io
+import json
 import re
 import uuid
 from typing import List, Optional
@@ -34,10 +35,15 @@ def health():
 
 
 @app.post("/search")
-async def search(file: UploadFile = File(...), limit: int = 5):
+async def search(
+    file: UploadFile = File(...),
+    profile: Optional[str] = Form(None),
+    limit: int = 5
+):
     """
     Accept a chest X-ray image, generate a MedSiglip embedding,
-    and return the top `limit` similar cases from Qdrant.
+    and return the top `limit` similar cases from Qdrant, re-ranked
+    using the extracted CaseProfile.
     """
     if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
         raise HTTPException(status_code=400, detail="Only image files are accepted (jpg, png, webp).")
@@ -48,13 +54,20 @@ async def search(file: UploadFile = File(...), limit: int = 5):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read image: {e}")
 
+    parsed_profile = None
+    if profile:
+        try:
+            parsed_profile = json.loads(profile)
+        except Exception as e:
+            print(f"Warning: Failed to parse profile JSON: {e}")
+
     try:
         embedding = generate_embedding(image)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding generation failed: {e}")
 
     try:
-        matches = search_similar(embedding, limit=limit)
+        matches = search_similar(embedding, profile_data=parsed_profile, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Qdrant search failed: {e}")
 

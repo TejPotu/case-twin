@@ -18,9 +18,14 @@ export interface MatchItem {
   case_text?: string;
 }
 
-export async function searchByImage(file: File, limit = 5): Promise<MatchItem[]> {
+import type { CaseProfile } from "./caseProfileTypes";
+
+export async function searchByImage(file: File, profile?: CaseProfile, limit = 5): Promise<MatchItem[]> {
   const formData = new FormData();
   formData.append("file", file);
+  if (profile) {
+    formData.append("profile", JSON.stringify(profile));
+  }
   formData.append("limit", String(limit));
 
   const response = await fetch(`${API_BASE}/search?limit=${limit}`, {

@@ -9,7 +9,7 @@ import { AgenticCopilotPanel } from "@/components/AgenticCopilotPanel";
 import { cn } from "@/lib/utils";
 
 
-type Step = 0 | 1 | 2 | 3 | 4;
+type Step = 0 | 1 | 2 | 3;
 type OutcomeVariant = "success" | "warning" | "neutral";
 
 interface MatchItem {
@@ -35,16 +35,7 @@ interface RouteCenter {
   reason: string;
 }
 
-const stepLabels = ["Upload", "Review", "Matches", "Route", "Memo"] as const;
-
-const reviewFields = [
-  { label: "Age", value: "52" },
-  { label: "Sex", value: "Not specified" },
-  { label: "Primary concern", value: "Hemoptysis, weight loss" },
-  { label: "Suspected condition", value: "Possible lung malignancy" },
-  { label: "Modality", value: "CT Chest" },
-  { label: "Key findings", value: "Right hilar mass, mediastinal LAD" }
-];
+const stepLabels = ["Upload", "Matches", "Route", "Memo"] as const;
 
 const matchItems: MatchItem[] = [
   {
@@ -391,127 +382,6 @@ function UploadScreen({
 }
 
 
-function ReviewScreen({
-  tab,
-  onTabChange
-}: {
-  tab: "readable" | "json";
-  onTabChange: (next: "readable" | "json") => void;
-}) {
-  const fhirJson = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          conditions: ["Possible lung neoplasm"],
-          observations: ["Hemoptysis"],
-          imaging: ["CT", "Chest"]
-        },
-        null,
-        2
-      ),
-    []
-  );
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[680px_416px]">
-      <div className="space-y-4">
-        <SurfaceCard>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Extracted details</h2>
-            <MedButton variant="tertiary">Edit</MedButton>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {reviewFields.map((entry) => (
-              <div key={entry.label} className="space-y-0.5">
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">{entry.label}</p>
-                <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">{entry.value}</p>
-              </div>
-            ))}
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard>
-          <div className="flex items-center border-b border-[var(--mr-border)]">
-            <button
-              type="button"
-              className={cn(
-                "h-10 border-b-2 px-3 text-[15px] leading-[22px]",
-                tab === "readable"
-                  ? "border-[var(--mr-text)] text-[var(--mr-text)]"
-                  : "border-transparent text-[var(--mr-text-secondary)]"
-              )}
-              onClick={() => onTabChange("readable")}
-            >
-              Readable
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "h-10 border-b-2 px-3 text-[15px] leading-[22px]",
-                tab === "json"
-                  ? "border-[var(--mr-text)] text-[var(--mr-text)]"
-                  : "border-transparent text-[var(--mr-text-secondary)]"
-              )}
-              onClick={() => onTabChange("json")}
-            >
-              FHIR JSON
-            </button>
-          </div>
-
-          {tab === "readable" ? (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Conditions</p>
-                <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Possible lung neoplasm</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Observations</p>
-                <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">Hemoptysis</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Imaging</p>
-                <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">CT, Chest</p>
-              </div>
-            </div>
-          ) : (
-            <pre className="max-h-[220px] overflow-auto rounded-xl bg-[var(--mr-bg-subtle)] p-3 text-xs leading-4 text-[var(--mr-text)]">
-              {fhirJson}
-            </pre>
-          )}
-        </SurfaceCard>
-      </div>
-
-      <div className="space-y-4">
-        <SurfaceCard>
-          <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Extraction quality</h2>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-[15px] leading-[22px]">
-              <span className="text-[var(--mr-text)]">Completeness</span>
-              <span className="font-semibold text-[var(--mr-text)]">92%</span>
-            </div>
-            <div className="h-1 rounded bg-[#DCFCE7]">
-              <div className="h-full w-[92%] rounded bg-[var(--mr-success)]" />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-[15px] leading-[22px]">
-            <span className="text-[var(--mr-text)]">Ambiguities</span>
-            <span className="font-semibold text-[var(--mr-text)]">2</span>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-xl bg-[#FFFBEB] p-3">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#FDE68A] text-xs text-[var(--mr-warning)]">
-              !
-            </span>
-            <p className="text-xs leading-4 text-[var(--mr-warning)]">Smoking history not found.</p>
-          </div>
-        </SurfaceCard>
-      </div>
-    </div>
-  );
-}
 
 function MatchCard({
   item,
@@ -844,7 +714,6 @@ function MemoScreen() {
 
 export function DashboardPage() {
   const [step, setStep] = useState<Step>(0);
-  const [reviewTab, setReviewTab] = useState<"readable" | "json">("readable");
   const [selectedMatch, setSelectedMatch] = useState(0);
   const [deIdentify, setDeIdentify] = useState(true);
   const [saveToHistory, setSaveToHistory] = useState(true);
@@ -862,13 +731,21 @@ export function DashboardPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const handleStepChange = async (next: Step) => {
-    // When advancing to the Matches step (2), trigger real search
-    if (next === 2 && uploadedFile && matchResults.length === 0) {
+    // When advancing to the Matches step (1), trigger real search
+    if (next === 1 && matchResults.length === 0) {
       setStep(next);
       setIsSearching(true);
       setSearchError(null);
       try {
-        const results = await searchByImage(uploadedFile);
+        let fileToSearch = uploadedFile;
+        if (!fileToSearch) {
+          // Fallback dummy 1x1 image so backend receives a valid file
+          const dummyImg = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 11, 73, 68, 65, 84, 8, 153, 99, 248, 15, 4, 0, 9, 251, 3, 253, 153, 226, 18, 172, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])], { type: 'image/png' });
+          fileToSearch = new File([dummyImg], "dummy.png", { type: "image/png" });
+        }
+
+        const profileData = useDashboardStore.getState().profile;
+        const results = await searchByImage(fileToSearch, profileData || undefined);
         setMatchResults(results);
       } catch (err) {
         setSearchError(err instanceof Error ? err.message : "Search failed");
@@ -930,9 +807,7 @@ export function DashboardPage() {
           />
         ) : null}
 
-        {step === 1 ? <ReviewScreen tab={reviewTab} onTabChange={setReviewTab} /> : null}
-
-        {step === 2 ? (
+        {step === 1 ? (
           <>
             {searchError && (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -942,14 +817,14 @@ export function DashboardPage() {
             <MatchesScreen
               selectedMatch={selectedMatch}
               onSelectMatch={setSelectedMatch}
-              onContinueToRoute={() => setStep(3)}
+              onContinueToRoute={() => setStep(2)}
               items={matchResults}
               isLoading={isSearching}
             />
           </>
         ) : null}
 
-        {step === 3 ? (
+        {step === 2 ? (
           <RouteScreen
             equipment={equipment}
             maxTravelTime={maxTravelTime}
@@ -965,7 +840,7 @@ export function DashboardPage() {
           />
         ) : null}
 
-        {step === 4 ? <MemoScreen /> : null}
+        {step === 3 ? <MemoScreen /> : null}
       </main>
     </div>
   );
