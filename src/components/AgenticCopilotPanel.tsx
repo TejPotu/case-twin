@@ -11,6 +11,8 @@ import {
     UploadCloud,
     X,
     ChevronRight,
+    Stethoscope,
+    Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CaseProfile } from "@/lib/caseProfileTypes";
@@ -107,7 +109,7 @@ function CtaBanner({ onProceed }: { onProceed: () => void }) {
         >
             <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-100 border border-zinc-200">
-                    <Sparkles className="h-4 w-4 text-zinc-600" />
+                    <Stethoscope className="h-4 w-4 text-zinc-600" />
                 </div>
                 <div>
                     <p className="text-sm font-semibold leading-5 text-zinc-900">Profile is ready for matching</p>
@@ -170,7 +172,7 @@ function MessageBubble({
         <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
             {!isUser && (
                 <div className="mr-2 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 border border-zinc-200">
-                    <Bot className="h-4 w-4 text-zinc-600" />
+                    <Activity className="h-4 w-4 text-[var(--mr-action)]" />
                 </div>
             )}
             <div className={cn("max-w-[82%] space-y-2", isUser && "items-end")}>
@@ -439,7 +441,7 @@ export function AgenticCopilotPanel({
             <div className="flex shrink-0 items-center justify-between border-b border-[var(--mr-border)] bg-white px-5 py-4">
                 <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-100 border border-zinc-200">
-                        <Bot className="h-5 w-5 text-zinc-700" />
+                        <Activity className="h-5 w-5 text-[var(--mr-action)]" />
                     </div>
                     <div>
                         <h2 className="text-[15px] font-semibold leading-5 text-[var(--mr-text)]">
@@ -477,9 +479,6 @@ export function AgenticCopilotPanel({
                             {conf.score}%
                         </span>
                     </div>
-                    <div className="text-right">
-                        <p className="text-[12px] font-semibold text-[var(--mr-text)]">{conf.filled}/{conf.total} fields</p>
-                    </div>
                 </div>
             </div>
 
@@ -505,7 +504,7 @@ export function AgenticCopilotPanel({
             )}
 
             {/* ── Input area ── */}
-            <div className="shrink-0 border-t border-[var(--mr-border)] bg-[var(--mr-bg-subtle)] p-4">
+            <div className="shrink-0 bg-white p-5 pt-3">
                 {/* Pending file chips */}
                 {pendingFiles.length > 0 && (
                     <div className="mb-3 flex flex-wrap gap-2">
@@ -522,9 +521,9 @@ export function AgenticCopilotPanel({
                 )}
 
                 <div className={cn(
-                    "flex items-end gap-2 rounded-xl border bg-white px-4 py-3 transition-shadow",
-                    isDragOver ? "border-[var(--mr-action)]" : "border-[var(--mr-border)]",
-                    "focus-within:border-[var(--mr-action)]"
+                    "flex items-end gap-3 rounded-2xl border border-zinc-200/80 bg-zinc-50/50 px-3 py-2 transition-all duration-300 shadow-sm",
+                    isDragOver ? "border-zinc-400 bg-white shadow-md ring-4 ring-zinc-500/10" : "hover:border-zinc-300/80 hover:bg-white",
+                    "focus-within:border-zinc-400 focus-within:bg-white focus-within:shadow-md focus-within:ring-4 focus-within:ring-zinc-500/10"
                 )}>
                     {/* File attach button */}
                     <input
@@ -539,9 +538,9 @@ export function AgenticCopilotPanel({
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Attach files"
-                        className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--mr-text-secondary)] transition hover:bg-[var(--mr-bg-subtle)] hover:text-[var(--mr-action)]"
+                        className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-zinc-400 transition-all duration-200 hover:bg-zinc-200/50 hover:text-zinc-700 active:scale-95"
                     >
-                        <UploadCloud className="h-4 w-4" />
+                        <UploadCloud className="h-5 w-5" strokeWidth={2.2} />
                     </button>
 
                     {/* Textarea */}
@@ -558,7 +557,7 @@ export function AgenticCopilotPanel({
                                     ? "Profile complete — or continue to add detail..."
                                     : "Answer the question above, or add more evidence..."
                         }
-                        className="flex-1 resize-none bg-transparent text-sm leading-6 text-[var(--mr-text)] placeholder:text-[var(--mr-text-secondary)] focus:outline-none"
+                        className="flex-1 resize-none bg-transparent py-2.5 text-[14.5px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
                         style={{ minHeight: "24px" }}
                     />
 
@@ -569,21 +568,21 @@ export function AgenticCopilotPanel({
                         disabled={!canSend}
                         aria-label="Send"
                         className={cn(
-                            "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all",
+                            "mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                             canSend
-                                ? "bg-zinc-800 text-white hover:bg-zinc-700 shadow-sm"
-                                : "bg-[var(--mr-bg-subtle)] text-[var(--mr-border)] cursor-not-allowed"
+                                ? "bg-zinc-900 text-white hover:bg-zinc-800 hover:scale-[1.03] active:scale-[0.97] shadow-md shadow-zinc-900/15"
+                                : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
                         )}
                     >
                         {isProcessing
                             ? <Loader2 className="h-4 w-4 animate-spin" />
-                            : <SendHorizontal className="h-4 w-4" />
+                            : <SendHorizontal className="h-4 w-4 ml-0.5" strokeWidth={2.5} />
                         }
                     </button>
                 </div>
 
-                <p className="mt-2 text-center text-[10px] leading-4 text-[var(--mr-text-secondary)]">
-                    Drag files anywhere into this panel · Press <kbd className="rounded border border-[var(--mr-border)] px-1 py-px text-[9px]">Enter</kbd> to send · <kbd className="rounded border border-[var(--mr-border)] px-1 py-px text-[9px]">Shift + Enter</kbd> for newline
+                <p className="mt-4 text-center text-[12px] font-medium text-zinc-400">
+                    Drag files anywhere • <kbd className="font-sans px-1.5 py-0.5 mx-0.5 rounded-md bg-zinc-100 border border-zinc-200/60 text-zinc-500 shadow-sm">Enter</kbd> to send • <kbd className="font-sans px-1.5 py-0.5 mx-0.5 rounded-md bg-zinc-100 border border-zinc-200/60 text-zinc-500 shadow-sm">Shift + Enter</kbd> for newline
                 </p>
             </div>
         </div>

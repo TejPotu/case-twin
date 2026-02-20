@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useMemo, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useDashboardStore } from "@/store/dashboardStore";
-import { Check, FileText, Loader2, MapPin, Settings, Sparkles } from "lucide-react";
+import { Check, FileText, Loader2, MapPin, Settings, Settings2, Sparkles, Stethoscope, FolderOpen, Plus, HeartPulse } from "lucide-react";
 import { searchByImage, type MatchItem as ApiMatchItem } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
 import { emptyProfile, type CaseProfile } from "@/lib/caseProfileTypes";
@@ -291,76 +291,75 @@ function UploadScreen({
   return (
     <div
       ref={containerRef}
-      className="flex h-full min-h-[calc(100vh-120px)] gap-0 pt-6"
+      className="flex h-[calc(100vh-100px)] gap-0 pt-6"
       style={{ overflow: "hidden" }}
     >
       {/* ── Left: Live Case Profile ── */}
       <div
-        className="flex flex-col gap-4 overflow-y-auto pr-3"
+        className="flex flex-col gap-4 overflow-hidden h-full pr-3 pb-6 relative"
         style={{ width: `${leftPct}%`, minWidth: 0 }}
       >
-
-        {/* Minimalist Overview Card */}
-        <div className="flex flex-col p-5 rounded-xl border border-zinc-200 bg-white shadow-sm mb-2">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-[15px] font-semibold text-zinc-900">Case Extraction Quality</h2>
-              <p className="text-[13px] text-zinc-500 mt-0.5">Automated profile generation from evidence.</p>
-            </div>
-            <span className={cn(
-              "text-[12px] font-medium px-2 py-0.5 rounded-md",
-              conf.score >= 80 ? "bg-emerald-50 text-emerald-700" : conf.score >= 50 ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-700"
-            )}>
-              {conf.score >= 80 ? "High" : conf.score >= 50 ? "Moderate" : "Low"} Completeness
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 bg-zinc-50/50 p-3 rounded-lg border border-zinc-100">
-            <div className="flex-1">
-              <div className="w-full h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-                <div className="h-full transition-all duration-700 rounded-full" style={{ width: `${conf.score}%`, backgroundColor: conf.score >= 80 ? '#10b981' : conf.score >= 50 ? '#f59e0b' : '#3f3f46' }} />
+        <div className="rounded-2xl border border-zinc-200/80 bg-white shadow-sm overflow-hidden flex flex-col flex-1 h-full min-h-0">
+          {/* Header Section (Always Visible) */}
+          <div className="px-8 pt-8 pb-5 border-b border-zinc-100 bg-zinc-50/50 flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm">
+                <FileText className="h-5 w-5 text-zinc-700" />
+              </div>
+              <div>
+                <h2 className="text-[22px] font-semibold tracking-tight text-zinc-900 leading-none">Case Profile</h2>
+                <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-zinc-500">
+                  <Stethoscope className="h-3.5 w-3.5 text-[var(--mr-action)]" /> MedGemma Extracted
+                </p>
               </div>
             </div>
-            <div className="text-[13px] text-zinc-600 shrink-0">
-              <span className="font-semibold text-zinc-900">{conf.score}%</span> extracted ({conf.filled}/{conf.total})
+
+            {/* Inline Extraction Quality */}
+            <div className="flex flex-col items-end">
+              <span className={cn(
+                "text-[12px] font-semibold px-2 py-0.5 rounded-md border",
+                conf.score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : conf.score >= 50 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-zinc-100 text-zinc-700 border-zinc-200"
+              )}>
+                {conf.score}% Complete
+              </span>
             </div>
           </div>
 
-          {conf.missing.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-zinc-100">
-              <p className="text-[12px] font-medium text-zinc-500 mb-2">Missing details:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {conf.missing.slice(0, 6).map(m => (
-                  <span key={m} className="px-2 py-0.5 rounded-md border border-zinc-200/60 bg-zinc-50 text-[11px] text-zinc-600 font-medium">
-                    {m}
-                  </span>
-                ))}
-                {conf.missing.length > 6 && (
-                  <span className="px-2 py-0.5 text-[11px] text-zinc-400 font-medium">+{conf.missing.length - 6} more</span>
-                )}
+          {/* Content Section */}
+          <div className="flex-1 overflow-y-auto w-full relative">
+            {profile && conf.score > 0 ? (
+              <div className="p-8 pb-32 transition-all">
+                <CaseProfileView profile={profile} />
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-zinc-50/20 group">
+                <div className="absolute inset-0 bg-gradient-to-tr from-white via-transparent to-zinc-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+
+                <div className="flex flex-col items-center justify-center gap-5 text-center max-w-[320px] relative z-10 transition-transform duration-500 group-hover:-translate-y-1">
+                  <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white shadow-sm border border-zinc-200/60 ring-4 ring-white">
+                    <div className="absolute inset-0 rounded-2xl bg-zinc-100/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <HeartPulse className="h-8 w-8 text-zinc-400 group-hover:text-rose-500 transition-colors duration-500" strokeWidth={1.5} />
+                    <div className="absolute -bottom-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-zinc-200/60">
+                      <FileText className="h-3.5 w-3.5 text-zinc-400" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-[17px] font-semibold text-zinc-900 tracking-tight">Case Profile Empty</h3>
+                    <p className="text-[14px] leading-relaxed text-zinc-500">
+                      Talk to the Copilot on the right. Share patient evidence, labs, and imaging to watch the intelligent case profile automatically appear here.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-zinc-200/60 shadow-sm text-[13px] font-medium text-zinc-500 transition-all duration-300 group-hover:shadow-md group-hover:border-zinc-300/60">
+                    <Loader2 className="w-3.5 h-3.5 animate-[spin_3s_linear_infinite] text-zinc-400" />
+                    Waiting for evidence...
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Live profile fields */}
-        {profile ? (
-          <div className="rounded-xl border border-zinc-200/80 bg-white p-6 shadow-sm mb-8 relative">
-            <CaseProfileView profile={profile} />
-          </div>
-        ) : (
-          <SurfaceCard>
-            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--mr-bg-subtle)] border border-[var(--mr-border)]">
-                <Sparkles className="h-7 w-7 text-[var(--mr-text-secondary)]" />
-              </div>
-              <p className="text-sm font-medium text-[var(--mr-text-secondary)]">No profile yet</p>
-              <p className="max-w-[220px] text-xs leading-5 text-[var(--mr-text-secondary)]">
-                Talk to the Copilot — share evidence and watch the case profile appear here.
-              </p>
-            </div>
-          </SurfaceCard>
-        )}
       </div>
 
       {/* ── Drag Divider ── */}
@@ -883,39 +882,42 @@ export function DashboardPage() {
 
   return (
     <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
-      <header className="fixed left-0 right-0 top-0 z-40 border-b border-[var(--mr-border)] bg-white/95 shadow-[0_6px_20px_rgba(0,0,0,0.04)] backdrop-blur">
-        <div className="mr-container flex min-h-24 flex-col justify-center gap-2 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[15px] font-semibold leading-[22px] text-[var(--mr-text)]">MedRoute</span>
-              <span className="text-xs leading-4 text-[var(--mr-text-secondary)]">Case-Twin Routing</span>
-            </div>
+      <header className="fixed left-0 right-0 top-0 z-40 border-b border-zinc-200/80 bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+        <div className="mr-container flex h-16 items-center justify-between gap-4 py-3">
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="inline-flex h-9 items-center rounded-full border border-[var(--mr-border)] px-4 text-[14px] font-medium leading-5 text-[var(--mr-text)] transition hover:bg-[var(--mr-bg-subtle)]"
-              >
-                Case History
-              </button>
-              <button
-                type="button"
-                aria-label="Settings"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mr-border)] text-[var(--mr-text-secondary)] transition hover:bg-[var(--mr-bg-subtle)]"
-              >
-                <Settings className="h-5 w-5" />
-              </button>
+          <div className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-opacity">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[0.4rem] bg-gradient-to-tr from-zinc-900 to-zinc-800 text-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] ring-1 ring-zinc-900/10 transition-transform duration-300 hover:scale-[1.03]">
+              <span className="text-[13px] font-bold tracking-wider">CT</span>
             </div>
+            <span className="text-[16px] font-semibold tracking-tight text-zinc-900">Case-Twin</span>
           </div>
 
-          <div className="flex items-center justify-center">
+          <div className="flex-1 flex justify-center">
             <Stepper step={step} onStepChange={handleStepChange} />
           </div>
+
+          <div className="flex items-center gap-4">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50">
+              <FolderOpen className="w-3.5 h-3.5" strokeWidth={2.5} /> My Cases
+            </button>
+
+            <button className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-medium text-white shadow-md shadow-zinc-900/10 hover:bg-zinc-800 transition-all active:scale-[0.98]">
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              New Case
+            </button>
+
+            <div className="w-px h-4 bg-zinc-200" />
+
+            <button aria-label="Settings" className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition-colors">
+              <Settings2 className="h-4 w-4" />
+            </button>
+          </div>
+
         </div>
       </header>
 
       <main
-        className={cn("mr-container h-full pb-6 pt-32", step === 0 ? "overflow-hidden" : "overflow-auto")}
+        className={cn("mr-container h-full pb-6 pt-24", step === 0 ? "overflow-hidden" : "overflow-auto")}
       >
         {step === 0 ? (
           <UploadScreen
