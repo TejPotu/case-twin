@@ -887,7 +887,7 @@ export function DashboardPage() {
 
   const handleStepChange = async (next: Step) => {
     // When advancing to the Matches step (2), trigger real search
-    if (next === 2 && uploadedFile) {
+    if (next === 2 && uploadedFile && matchResults.length === 0) {
       setStep(next);
       setIsSearching(true);
       setSearchError(null);
@@ -932,7 +932,7 @@ export function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-center">
-            <Stepper step={step} onStepChange={setStep} />
+            <Stepper step={step} onStepChange={handleStepChange} />
           </div>
         </div>
       </header>

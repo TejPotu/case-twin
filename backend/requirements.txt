@@ -1,10 +1,11 @@
 fastapi
 uvicorn[standard]
 python-multipart
-transformers
-torch
-pillow
+requests
 qdrant-client
 python-dotenv
+pillow
+transformers
+torch
 huggingface_hub
 google-cloud-storage
