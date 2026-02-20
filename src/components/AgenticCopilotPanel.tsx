@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDashboardStore } from "@/store/dashboardStore";
 import {
     Bot,
     Check,
@@ -222,8 +223,10 @@ export function AgenticCopilotPanel({
     onFileForSearch,
     onReadyToProceed,
 }: AgenticCopilotPanelProps) {
-    const [state, setState] = useState<OrchestratorState>(createInitialState);
+    const state = useDashboardStore(s => s.orchestratorState);
+    const setState = useDashboardStore(s => s.setOrchestratorState);
     const stateRef = useRef<OrchestratorState>(state);
+
     const [inputText, setInputText] = useState("");
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [isDragOver, setIsDragOver] = useState(false);

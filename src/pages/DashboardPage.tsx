@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState, useMemo, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useDashboardStore } from "@/store/dashboardStore";
 import { Check, FileText, Loader2, MapPin, Settings, Sparkles } from "lucide-react";
 import { searchByImage, type MatchItem as ApiMatchItem } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
-import { type CaseProfile } from "@/lib/caseProfileTypes";
+import { emptyProfile, type CaseProfile } from "@/lib/caseProfileTypes";
 import { CaseProfileView } from "@/components/CaseProfileView";
 import { AgenticCopilotPanel } from "@/components/AgenticCopilotPanel";
 import { cn } from "@/lib/utils";
@@ -243,13 +244,14 @@ function UploadScreen({
   onImageFilePicked: (file: File | null) => void;
   onStepChange: (step: Step) => void;
 }) {
-  const [profile, setProfile] = useState<CaseProfile | null>(null);
+  const profile = useDashboardStore(s => s.profile);
+  const setProfile = useDashboardStore(s => s.setProfile);
 
   const conf = profile ? computeProfileConfidence(profile) : { score: 0, filled: 0, total: 13, missing: [] };
 
   const handleProfileUpdate = useCallback((updated: CaseProfile) => {
     setProfile(updated);
-  }, []);
+  }, [setProfile]);
 
   const handleFileForSearch = useCallback((file: File) => {
     onImageFilePicked(file);
