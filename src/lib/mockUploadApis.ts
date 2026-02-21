@@ -318,7 +318,8 @@ export async function findHospitalsRoute(
   diagnosis: string,
   location?: string,
   equipment?: Record<string, boolean>,
-  maxTravelTime?: number
+  maxTravelTime?: number,
+  maxDistance?: string
 ): Promise<RouteCenter[]> {
   const formData = new FormData();
   formData.append("diagnosis", diagnosis);
@@ -339,6 +340,10 @@ export async function findHospitalsRoute(
 
   if (maxTravelTime) {
     formData.append("maxTravelTime", maxTravelTime.toString());
+  }
+
+  if (maxDistance) {
+    formData.append("maxDistance", maxDistance);
   }
 
   const response = await fetch(`${API_BASE}/search_hospitals`, {

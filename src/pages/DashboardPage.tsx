@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useMemo, useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useDashboardStore } from "@/store/dashboardStore";
-import { Check, FileText, Loader2, MapPin, Settings2, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity, ChevronLeft } from "lucide-react";
+import { Check, FileText, Loader2, MapPin, Settings2, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity, ChevronLeft, Building2, X } from "lucide-react";
 import { searchByImage, findHospitalsRoute } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
 import { type CaseProfile } from "@/lib/caseProfileTypes";
@@ -870,18 +870,40 @@ function MatchesScreen({
   );
 }
 
-function CenterRow({ center }: { center: RouteCenter }) {
+function CenterRow({ center, onClick, condensed }: { center: RouteCenter, onClick?: () => void, condensed?: boolean }) {
   return (
-    <div className="flex min-h-16 flex-col gap-2 border-b border-[var(--mr-border)] px-4 py-3 text-[15px] leading-[22px] last:border-b-0 lg:grid lg:grid-cols-[260px_120px_100px_1fr] lg:items-center lg:gap-4">
-      <p className="font-semibold text-[var(--mr-text)]">{center.name}</p>
+    <div
+      onClick={onClick}
+      className={cn(
+        "flex min-h-16 flex-col gap-2 border-b border-[var(--mr-border)] px-4 py-3 text-[15px] leading-[22px] last:border-b-0 transition-colors",
+        !condensed && "lg:grid lg:grid-cols-[2fr_120px_90px_3fr] lg:items-center lg:gap-4",
+        onClick && "cursor-pointer hover:bg-zinc-50 active:bg-zinc-100"
+      )}
+    >
+      <div className={cn("flex flex-col", condensed && "gap-1")}>
+        <p className={cn("font-semibold text-[var(--mr-text)]", condensed && "line-clamp-2 leading-tight")}>{center.name}</p>
+        {condensed && (
+          <p className="text-sm text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
+            <MapPin className="w-3.5 h-3.5 mb-0.5" />
+            {center.travel}
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
-        <span className="text-[var(--mr-text)]">{center.capability}</span>
-        <span className="h-1.5 w-16 rounded bg-[var(--mr-bg-subtle)]">
+        <span className="text-[var(--mr-text)] font-medium text-sm">{center.capability}</span>
+        <span className="h-1.5 w-16 rounded bg-[var(--mr-bg-subtle)] overflow-hidden">
           <span className="block h-1.5 rounded bg-[var(--mr-action)]" style={{ width: center.capability }} />
         </span>
       </div>
-      <p className="text-[var(--mr-text)]">{center.travel}</p>
-      <p className="text-[var(--mr-text)]">{center.reason}</p>
+
+      {!condensed && (
+        <p className="text-[var(--mr-text)] font-medium">{center.travel}</p>
+      )}
+
+      {!condensed && (
+        <p className="text-[var(--mr-text)] text-sm text-zinc-600 line-clamp-3 leading-relaxed">{center.reason}</p>
+      )}
     </div>
   );
 }
@@ -889,34 +911,91 @@ function CenterRow({ center }: { center: RouteCenter }) {
 function RouteScreen({
   equipment,
   maxTravelTime,
+  maxDistance,
   language,
   centers,
   isLoading,
   error,
+  selectedHospital,
+  patientCondition,
   onEquipmentToggle,
   onMaxTravelTimeChange,
-  onLanguageChange
+  onMaxDistanceChange,
+  onLanguageChange,
+  onHospitalClick,
+  onUpdateSearch
 }: {
   equipment: Record<string, boolean>;
   maxTravelTime: number;
+  maxDistance: string;
   language: string;
   centers: RouteCenter[];
   isLoading: boolean;
   error: string | null;
+  selectedHospital: RouteCenter | null;
+  patientCondition: string;
   onEquipmentToggle: (key: string, value: boolean) => void;
   onMaxTravelTimeChange: (value: number) => void;
+  onMaxDistanceChange: (value: string) => void;
   onLanguageChange: (value: string) => void;
+  onHospitalClick: (center: RouteCenter | null) => void;
+  onUpdateSearch: () => void;
 }) {
   const safeCenters = Array.isArray(centers) ? centers : [];
   const validCenters = safeCenters.filter(c => typeof c.lat === "number" && typeof c.lng === "number");
   const mapCenter: [number, number] = validCenters.length > 0
-    ? [validCenters[0].lat, validCenters[0].lng]
+    ? [validCenters[0].lat as number, validCenters[0].lng as number]
     : [39.8283, -98.5795]; // Default to US center
 
+  // Highlight logic for keywords in reason text
+  const highlightKeywords = (text: string) => {
+    if (!text) return text;
+    const terms = [patientCondition, ...Object.keys(equipment).filter(k => equipment[k])].filter(Boolean);
+    if (terms.length === 0) return text;
+
+    let wordsToHighlight: string[] = [];
+    terms.forEach(t => {
+      if (t.length > 3) {
+        wordsToHighlight.push(t);
+        if (t.includes(' ')) {
+          wordsToHighlight.push(...t.split(' ').filter(w => w.length > 3));
+        }
+      }
+    });
+
+    wordsToHighlight = Array.from(new Set(wordsToHighlight.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+    const regex = new RegExp(`(${wordsToHighlight.join('|')})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <p className="text-[15px] leading-[24px] text-zinc-700">
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <span key={i} className="bg-yellow-200/80 text-yellow-900 px-1 rounded-[4px] font-medium border border-yellow-300/50 shadow-sm">{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </p>
+    );
+  };
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[680px_416px]">
-      <div className="space-y-4">
-        <SurfaceCard className="h-80 relative overflow-hidden p-0 border-zinc-200 z-0">
+    <div className={cn(
+      "flex h-[calc(100vh-140px)] gap-6 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
+      selectedHospital === null ? "flex-col lg:grid lg:grid-cols-[680px_416px]" : "flex-row"
+    )}>
+      {/* Left Container */}
+      <div className={cn(
+        "flex flex-col gap-5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
+        selectedHospital === null
+          ? "w-full opacity-100 h-full"
+          : "w-full max-w-[360px] xl:max-w-[420px] shrink-0 opacity-100 h-full"
+      )}>
+        <SurfaceCard className={cn(
+          "relative overflow-hidden p-0 border-zinc-200 z-0 transition-all duration-500 shrink-0",
+          selectedHospital === null ? "h-80" : "h-56"
+        )}>
           <div className="absolute inset-0 z-0">
             <MapContainer
               center={mapCenter}
@@ -929,7 +1008,7 @@ function RouteScreen({
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               />
               {validCenters.map((center, idx) => (
-                <Marker key={idx} position={[center.lat, center.lng]} icon={defaultIcon}>
+                <Marker key={idx} position={[center.lat as number, center.lng as number]} icon={defaultIcon}>
                   <Popup>
                     <div className="text-sm">
                       <strong>{center.name}</strong><br />
@@ -946,7 +1025,7 @@ function RouteScreen({
           </span>
         </SurfaceCard>
 
-        <SurfaceCard className="gap-0 p-0">
+        <SurfaceCard className="gap-0 p-0 flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
               <Loader2 className="h-6 w-6 animate-spin mb-3 text-[var(--mr-action)]" />
@@ -965,63 +1044,157 @@ function RouteScreen({
             </div>
           ) : (
             centers.map((center) => (
-              <CenterRow key={center.name} center={center} />
+              <CenterRow
+                key={center.name}
+                center={center}
+                onClick={() => onHospitalClick(selectedHospital?.name === center.name ? null : center)}
+                condensed={selectedHospital !== null}
+              />
             ))
           )}
         </SurfaceCard>
       </div>
 
-      <div className="space-y-4">
-        <SurfaceCard>
-          <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Filters</h2>
+      {/* Right Canvas / Filters Container */}
+      {selectedHospital !== null ? (
+        <div className="flex-1 rounded-2xl border border-zinc-200/80 bg-white shadow-sm flex flex-col overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-right-8 duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]">
+          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50/50 px-6 py-4 shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onHospitalClick(null)}
+                className="flex items-center justify-center h-8 w-8 rounded-full hover:bg-zinc-200/80 transition-colors text-zinc-500 hover:text-zinc-900"
+                aria-label="Close hospital details"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <h2 className="text-[17px] font-semibold text-zinc-900">Hospital Details</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <MedButton variant="primary" size="sm">
+                Route to facility
+              </MedButton>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto bg-zinc-50/30 p-6 md:p-8">
+            <div className="max-w-[800px] mx-auto space-y-6">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 shadow-sm">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Facility Match Info</span>
+                    <h3 className="text-[24px] font-semibold tracking-[-0.01em] text-zinc-900 leading-tight">{selectedHospital.name}</h3>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 mt-3">
+                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200/80">
+                    <MapPin className="w-4 h-4 text-zinc-400" /> Approx Travel Time: {selectedHospital.travel}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200/80">
+                    <Activity className="w-4 h-4 text-zinc-400" /> Capability: {selectedHospital.capability}
+                  </span>
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Required equipment</p>
+              <div className="w-full h-px bg-zinc-200/60 my-4" />
+
+              <div className="space-y-3">
+                <h4 className="text-[16px] flex items-center gap-2 font-semibold text-zinc-900">
+                  <Activity className="w-5 h-5 text-blue-500" /> AI Selection Rationale
+                </h4>
+                <div className="bg-blue-50/50 border border-blue-100/60 rounded-xl p-5 shadow-sm text-zinc-800">
+                  {highlightKeywords(selectedHospital.reason)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <SurfaceCard>
+            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Filters</h2>
+
             <div className="space-y-2">
-              {Object.entries(equipment).map(([name, checked]) => (
-                <LabeledCheckbox
-                  key={name}
-                  checked={checked}
-                  label={name}
-                  onChange={(next) => onEquipmentToggle(name, next)}
-                />
-              ))}
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Required equipment</p>
+              <div className="space-y-2">
+                {Object.entries(equipment).map(([name, checked]) => (
+                  <LabeledCheckbox
+                    key={name}
+                    checked={checked}
+                    label={name}
+                    onChange={(next) => onEquipmentToggle(name, next)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="mr-divider" />
+            <div className="mr-divider" />
 
-          <div className="space-y-2">
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Max travel time</p>
-            <input
-              type="range"
-              min={0}
-              max={6}
-              step={0.5}
-              className="mr-slider"
-              value={maxTravelTime}
-              onChange={(event) => onMaxTravelTimeChange(Number(event.target.value))}
-            />
-            <div className="flex items-center justify-between text-xs leading-4 text-[var(--mr-text-secondary)]">
-              <span>0h</span>
-              <span>6h</span>
+            <div className="space-y-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Max travel time</p>
+              <input
+                type="range"
+                min={0}
+                max={6}
+                step={0.5}
+                className="mr-slider"
+                value={maxTravelTime}
+                onChange={(event) => onMaxTravelTimeChange(Number(event.target.value))}
+              />
+              <div className="flex items-center justify-between text-xs leading-4 text-[var(--mr-text-secondary)]">
+                <span>0h</span>
+                <span>6h</span>
+              </div>
             </div>
-          </div>
 
-          <div className="mr-divider" />
+            <div className="mr-divider" />
 
-          <div className="space-y-1">
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Language preference</p>
-            <select
-              className="mr-select h-9 text-[14px] leading-5"
-              value={language}
-              onChange={(event) => onLanguageChange(event.target.value)}
-            >
-              <option>English</option>
-            </select>
-          </div>
-        </SurfaceCard>
-      </div>
+            <div className="space-y-2">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Max distance</p>
+              <select
+                className="mr-select h-9 text-[14px] leading-5"
+                value={maxDistance}
+                onChange={(e) => onMaxDistanceChange(e.target.value)}
+              >
+                <option value="10">10 miles</option>
+                <option value="25">25 miles</option>
+                <option value="50">50 miles</option>
+                <option value="100">100 miles</option>
+                <option value="250">250 miles</option>
+              </select>
+            </div>
+
+            <div className="mr-divider" />
+
+            <div className="space-y-1">
+              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Language preference</p>
+              <select
+                className="mr-select h-9 text-[14px] leading-5"
+                value={language}
+                onChange={(event) => onLanguageChange(event.target.value)}
+              >
+                <option>English</option>
+              </select>
+            </div>
+
+            <div className="pt-4 mt-2">
+              <MedButton
+                variant="primary"
+                fullWidth
+                onClick={onUpdateSearch}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Updating...
+                  </>
+                ) : "Update results"}
+              </MedButton>
+            </div>
+          </SurfaceCard>
+        </div>
+      )}
     </div>
   );
 }
@@ -1119,6 +1292,7 @@ export function DashboardPage() {
   const [deIdentify, setDeIdentify] = useState(true);
   const [saveToHistory, setSaveToHistory] = useState(true);
   const [maxTravelTime, setMaxTravelTime] = useState(3);
+  const [maxDistance, setMaxDistance] = useState<string>("50");
   const [language, setLanguage] = useState("English");
   const [equipment, setEquipment] = useState<Record<string, boolean>>({
     "Interventional radiology": true,
@@ -1134,8 +1308,10 @@ export function DashboardPage() {
   const [routeCenters, setRouteCenters] = useState<RouteCenter[]>([]);
   const [isRouting, setIsRouting] = useState(false);
   const [routingError, setRoutingError] = useState<string | null>(null);
+  const [selectedHospital, setSelectedHospital] = useState<RouteCenter | null>(null);
 
   const fetchRoute = async () => {
+    setSelectedHospital(null); // Clear selection on new search to show filters/map
     const condition = selectedMatch !== null ? matchResults[selectedMatch].diagnosis : "complex respiratory condition";
     setIsRouting(true);
     setRoutingError(null);
@@ -1144,13 +1320,19 @@ export function DashboardPage() {
     let userLocation = "New York, NY"; // Fallback
     try {
       if ("geolocation" in navigator) {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        userLocation = await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(`${pos.coords.latitude}, ${pos.coords.longitude}`),
+            (err) => {
+              console.warn("Geolocation denied or failed, falling back to default.", err);
+              resolve("New York, NY");
+            },
+            { timeout: 5000 }
+          );
         });
-        userLocation = `${position.coords.latitude}, ${position.coords.longitude}`;
       }
     } catch (e) {
-      console.warn("Geolocation denied or failed, falling back to default.", e);
+      console.warn("Geolocation failed.", e);
     }
 
     try {
@@ -1158,7 +1340,8 @@ export function DashboardPage() {
         condition,
         userLocation,
         equipment,
-        maxTravelTime
+        maxTravelTime,
+        maxDistance
       );
       setRouteCenters(results);
     } catch (err) {
@@ -1198,15 +1381,6 @@ export function DashboardPage() {
       setStep(next);
     }
   };
-
-  // Re-fetch route when filters change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // Only re-fetch if we are actually on the route screen and already have a baseline match
-    if (step === 2 && routeCenters.length > 0) {
-      fetchRoute();
-    }
-  }, [equipment, maxTravelTime]);
 
   return (
     <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
@@ -1276,7 +1450,7 @@ export function DashboardPage() {
             <MatchesScreen
               selectedMatch={selectedMatch}
               onSelectMatch={setSelectedMatch}
-              onContinueToRoute={() => setStep(2)}
+              onContinueToRoute={() => handleStepChange(2)}
               items={matchResults}
               isLoading={isSearching}
               originalFile={uploadedFile}
@@ -1289,10 +1463,13 @@ export function DashboardPage() {
           <RouteScreen
             equipment={equipment}
             maxTravelTime={maxTravelTime}
+            maxDistance={maxDistance}
             language={language}
             centers={routeCenters}
             isLoading={isRouting}
             error={routingError}
+            selectedHospital={selectedHospital}
+            patientCondition={selectedMatch !== null && matchResults[selectedMatch] ? matchResults[selectedMatch].diagnosis : "complex condition"}
             onEquipmentToggle={(key, value) =>
               setEquipment((current) => ({
                 ...current,
@@ -1300,7 +1477,10 @@ export function DashboardPage() {
               }))
             }
             onMaxTravelTimeChange={setMaxTravelTime}
+            onMaxDistanceChange={setMaxDistance}
             onLanguageChange={setLanguage}
+            onHospitalClick={setSelectedHospital}
+            onUpdateSearch={fetchRoute}
           />
         ) : null}
 
