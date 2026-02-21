@@ -420,6 +420,16 @@ function MatchCard({
         <div className="space-y-1.5 min-w-0">
           <h3 className="font-semibold text-zinc-900 text-[14px] leading-snug line-clamp-2 group-hover:text-[var(--mr-action)] transition-colors break-words">{item.diagnosis}</h3>
           <p className="text-[12px] leading-relaxed text-zinc-500 line-clamp-2 break-words">{item.summary}</p>
+          {item.raw_payload && item.raw_payload.patient?.comorbidities?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {item.raw_payload.patient.comorbidities.slice(0, 2).map((c: string, i: number) => (
+                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200 truncate max-w-[100px]">{c}</span>
+              ))}
+              {item.raw_payload.patient.comorbidities.length > 2 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-50 text-zinc-400">+{item.raw_payload.patient.comorbidities.length - 2}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap text-[10px] font-medium text-zinc-400 uppercase tracking-wider mt-1 gap-x-2 gap-y-1">
           <span className="truncate max-w-[120px]">{item.facility}</span>
@@ -445,7 +455,20 @@ function MatchCard({
       <div className="min-w-0 flex-1 space-y-1.5 pr-4 py-1">
         <p className="text-[15px] font-semibold leading-[20px] text-zinc-900 group-hover:text-[var(--mr-action)] transition-colors line-clamp-2 break-words">{item.diagnosis}</p>
         <p className="text-[13px] leading-[20px] text-zinc-500 line-clamp-2 break-words">{item.summary}</p>
-        <div className="flex flex-wrap text-[11px] text-zinc-400 gap-x-3 gap-y-1 mt-1 font-medium">
+
+        {/* Rich Data Tags from raw_payload */}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {item.raw_payload?.patient?.comorbidities?.slice(0, 3).map((c: string, idx: number) => (
+            <span key={idx} className="text-[11px] px-2 py-0.5 bg-zinc-100 text-zinc-700 rounded-md border border-zinc-200/80 truncate max-w-[150px]">{c}</span>
+          ))}
+          {item.raw_payload?.presentation?.chief_complaint && (
+            <span className="text-[11px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-100 truncate max-w-[200px]" title="Chief Complaint">
+              🚨 {item.raw_payload.presentation.chief_complaint.slice(0, 40)}{item.raw_payload.presentation.chief_complaint.length > 40 ? "..." : ""}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap text-[11px] text-zinc-400 gap-x-3 gap-y-1 mt-2 font-medium">
           {item.pmc_id && <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> {item.pmc_id}</span>}
           {item.year && <span>• {item.year}</span>}
           {item.journal && <span className="truncate max-w-[150px]">• {item.journal}</span>}
@@ -909,7 +932,7 @@ function RouteScreen({
 }) {
   const safeCenters = Array.isArray(centers) ? centers : [];
   const validCenters = safeCenters.filter(c => typeof c.lat === "number" && typeof c.lng === "number");
-  const mapCenter: [number, number] = validCenters.length > 0
+  const mapCenter: [number, number] = validCenters.length > 0 && validCenters[0].lat !== undefined && validCenters[0].lng !== undefined
     ? [validCenters[0].lat, validCenters[0].lng]
     : [39.8283, -98.5795]; // Default to US center
 
@@ -929,15 +952,17 @@ function RouteScreen({
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               />
               {validCenters.map((center, idx) => (
-                <Marker key={idx} position={[center.lat, center.lng]} icon={defaultIcon}>
-                  <Popup>
-                    <div className="text-sm">
-                      <strong>{center.name}</strong><br />
-                      Capability: {center.capability}<br />
-                      Travel: {center.travel}
-                    </div>
-                  </Popup>
-                </Marker>
+                center.lat !== undefined && center.lng !== undefined && (
+                  <Marker key={idx} position={[center.lat, center.lng]} icon={defaultIcon}>
+                    <Popup>
+                      <div className="text-sm">
+                        <strong>{center.name}</strong><br />
+                        Capability: {center.capability}<br />
+                        Travel: {center.travel}
+                      </div>
+                    </Popup>
+                  </Marker>
+                )
               ))}
             </MapContainer>
           </div>

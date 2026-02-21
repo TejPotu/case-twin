@@ -187,6 +187,7 @@ def search_similar(embedding: list[float], profile_data: dict = None, limit: int
             "year": p.get("provenance", {}).get("year"),
             "radiology_view": p.get("study", {}).get("view_position", "Frontal"),
             "case_text": p.get("presentation", {}).get("hpi", p.get("case_text", "")),
+            "raw_payload": p,
         })
 
     return matches
