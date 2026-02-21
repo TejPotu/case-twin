@@ -1,11 +1,13 @@
 import { useCallback, useRef, useState, useMemo, useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useDashboardStore } from "@/store/dashboardStore";
-import { Check, FileText, Loader2, MapPin, Settings, Settings2, Sparkles, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope } from "lucide-react";
+import { Check, FileText, Loader2, MapPin, Settings, Settings2, Sparkles, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity } from "lucide-react";
 import { searchByImage, type MatchItem as ApiMatchItem } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
 import { emptyProfile, type CaseProfile } from "@/lib/caseProfileTypes";
 import { CaseProfileView } from "@/components/CaseProfileView";
 import { AgenticCopilotPanel } from "@/components/AgenticCopilotPanel";
+import { TwinProfileModal } from "@/components/TwinProfileModal";
+import { TwinChatPanel } from "@/components/TwinChatPanel";
 import { cn } from "@/lib/utils";
 import { X, ChevronLeft } from "lucide-react";
 
@@ -407,22 +409,27 @@ function MatchCard({
     return (
       <article
         className={cn(
-          "mr-surface flex flex-col gap-3 p-4 transition-all hover:bg-zinc-50 cursor-pointer overflow-hidden group",
+          "mr-surface flex flex-col gap-3 p-4 transition-all hover:bg-zinc-50 cursor-pointer overflow-hidden group shrink-0",
           selected ? "border-l-[4px] border-l-[var(--mr-action)] bg-blue-50/20" : "border-l-[4px] border-l-transparent"
         )}
         onClick={onSelect}
       >
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-2">
           <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[3px] bg-white", ringClass)}>
-            <span className="text-sm font-semibold">{item.score}%</span>
+            <span className="text-[13px] font-semibold">{item.score}%</span>
           </div>
-          <OutcomeBadge variant={item.outcomeVariant} label={item.outcome} />
+          <div className="flex-1 min-w-0 flex justify-end">
+            <OutcomeBadge variant={item.outcomeVariant} label={item.outcome} />
+          </div>
         </div>
-        <div className="space-y-1">
-          <h3 className="font-semibold text-zinc-900 text-[14px] leading-tight line-clamp-2 group-hover:text-[var(--mr-action)] transition-colors">{item.diagnosis}</h3>
-          <p className="text-xs text-zinc-500 line-clamp-2">{item.summary}</p>
+        <div className="space-y-1.5 min-w-0">
+          <h3 className="font-semibold text-zinc-900 text-[14px] leading-snug line-clamp-2 group-hover:text-[var(--mr-action)] transition-colors break-words">{item.diagnosis}</h3>
+          <p className="text-[12px] leading-relaxed text-zinc-500 line-clamp-2 break-words">{item.summary}</p>
         </div>
-        <div className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mt-1">{item.facility}</div>
+        <div className="flex flex-wrap text-[10px] font-medium text-zinc-400 uppercase tracking-wider mt-1 gap-x-2 gap-y-1">
+          <span className="truncate max-w-full">{item.facility}</span>
+          {item.year && <span>• {item.year}</span>}
+        </div>
       </article>
     );
   }
@@ -430,7 +437,7 @@ function MatchCard({
   return (
     <article
       className={cn(
-        "mr-surface flex flex-col gap-4 p-5 lg:h-[132px] lg:flex-row lg:items-center hover:shadow-md transition-all cursor-pointer group",
+        "mr-surface flex flex-col gap-4 p-5 lg:h-[132px] lg:flex-row lg:items-center hover:shadow-md transition-all cursor-pointer group shrink-0",
         selected && "border-l-[3px] border-l-[var(--mr-action)] bg-blue-50/10"
       )}
       onClick={onSelect}
@@ -442,6 +449,11 @@ function MatchCard({
       <div className="min-w-0 flex-1 space-y-1 pr-4">
         <p className="truncate text-[16px] font-semibold leading-[22px] text-zinc-900 group-hover:text-[var(--mr-action)] transition-colors">{item.diagnosis}</p>
         <p className="text-[14px] leading-relaxed text-zinc-500">{item.summary}</p>
+        <div className="flex flex-wrap text-[11px] text-zinc-400 gap-x-3 gap-y-1 mt-1 font-medium">
+          {item.pmc_id && <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> {item.pmc_id}</span>}
+          {item.year && <span>• {item.year}</span>}
+          {item.journal && <span className="truncate max-w-[150px]">• {item.journal}</span>}
+        </div>
       </div>
 
       <div className="flex shrink-0 flex-col gap-2 lg:items-end">
@@ -470,6 +482,10 @@ function MatchesScreen({
   originalProfile: CaseProfile | null;
 }) {
   const selected = selectedMatch !== null ? items[selectedMatch] : null;
+
+  // Modals state
+  const [showTwinProfile, setShowTwinProfile] = useState(false);
+  const [showTwinChat, setShowTwinChat] = useState(false);
 
   // Keep track of which match ID we've loaded insights for
   const [lastInsightsMatchIdx, setLastInsightsMatchIdx] = useState<number | null>(null);
@@ -548,10 +564,10 @@ function MatchesScreen({
       {/* Left List Container */}
       <div className={cn(
         "flex flex-col gap-5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
-        selected === null ? "w-full max-w-[800px] mx-auto opacity-100" : "w-[300px] xl:w-[350px] shrink-0 opacity-100"
+        selected === null ? "w-full max-w-[800px] mx-auto opacity-100" : "w-full max-w-[300px] xl:max-w-[380px] shrink-0 opacity-100"
       )}>
         <div className="flex items-center justify-between shrink-0">
-          <h1 className={cn("font-semibold text-zinc-900 tracking-tight transition-all", selected === null ? "text-[28px]" : "text-[20px]")}>
+          <h1 className={cn("font-semibold text-zinc-900 tracking-tight transition-all", selected === null ? "text-[28px]" : "text-[20px] line-clamp-1")}>
             {selected === null ? "Closest Case Twins" : "Top Matches"}
           </h1>
           {selected === null && (
@@ -576,7 +592,7 @@ function MatchesScreen({
           </div>
         ) : (
           <div className={cn(
-            "overflow-y-auto pb-8 pr-2 -mr-2",
+            "overflow-y-auto flex-1 min-h-0 pb-8 pr-2 -mr-2",
             selected === null ? "flex flex-col gap-4" : "flex flex-col gap-3"
           )}>
             {items.map((item, idx) => (
@@ -624,8 +640,8 @@ function MatchesScreen({
 
               <div className="w-px h-5 bg-zinc-200 mx-1" />
 
-              <MedButton variant="secondary" size="sm" onClick={() => onSelectMatch(null)}>
-                Back to list
+              <MedButton variant="secondary" size="sm" onClick={() => setShowTwinProfile(true)}>
+                Full Profile
               </MedButton>
               <MedButton variant="primary" size="sm" onClick={onContinueToRoute}>
                 Continue to routing
@@ -668,11 +684,14 @@ function MatchesScreen({
 
                 {/* Right: Matched Case */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[15px] font-semibold text-zinc-900 flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="text-[15px] font-semibold text-zinc-900 flex flex-wrap items-center gap-2">
                       Historical Case Twin
                       <OutcomeBadge variant={selected.outcomeVariant} label={`${selected.score}% Match`} />
                     </h3>
+                    <div className="flex gap-2">
+                      {/* Buttons moved elsewhere */}
+                    </div>
                   </div>
                   <div className="aspect-[4/3] rounded-2xl border border-zinc-200 overflow-hidden bg-zinc-100 relative shadow-inner">
                     {selected.image_url ? (
@@ -813,9 +832,29 @@ function MatchesScreen({
               </div>
 
             </div>
+            {/* Chat FAB */}
+            <button
+              onClick={() => setShowTwinChat(true)}
+              className="absolute bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all z-10"
+              aria-label="Open clinical chat context"
+            >
+              <Activity className="h-6 w-6" />
+            </button>
           </div>
         </div>
       )}
+
+      {/* Render Twin Modals */}
+      <TwinProfileModal
+        isOpen={showTwinProfile}
+        onClose={() => setShowTwinProfile(false)}
+        match={selected}
+      />
+      <TwinChatPanel
+        isOpen={showTwinChat}
+        onClose={() => setShowTwinChat(false)}
+        match={selected}
+      />
     </div>
   );
 }
@@ -1048,6 +1087,7 @@ export function DashboardPage() {
 
         const profileData = useDashboardStore.getState().profile;
         const results = await searchByImage(fileToSearch, profileData || undefined);
+        console.log("FULL MATCHED DATA:", results);
         setMatchResults(results);
       } catch (err) {
         setSearchError(err instanceof Error ? err.message : "Search failed");

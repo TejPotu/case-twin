@@ -186,6 +186,39 @@ async def compare_insights(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# /chat_twin  – Use MedGemma to answer questions about a case twin
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/chat_twin")
+async def chat_twin(
+    query: str = Form(...),
+    case_text: str = Form(...)
+):
+    """
+    RAG over the historic case profile context. Ask MedGemma to respond.
+    """
+    prompt = f"User Query: {query}\n\nCase Text:\n{case_text}\n\nYou are a helpful medical assistant. Answer the user's query concisely based ONLY on the evidence provided in the case text above."
+    
+    # We create a dummy black image to satisfy the multimodal endpoint
+    dummy_img = Image.new("RGB", (336, 336), color=(0, 0, 0))
+    try:
+        resp = query_medgemma(dummy_img, prompt=prompt, max_tokens=300)
+        if isinstance(resp, list) and len(resp) > 0:
+            reply = resp[0].get("generated_text", "")
+            # Clean up the prompt from the response if the model echoes it
+            if "case text above." in reply:
+                reply = reply.split("case text above.")[-1].strip()
+            
+            # Simple fallback if empty
+            if not reply:
+                reply = "I don't have enough clear information in the case text to answer that."
+            return {"reply": reply}
+    except Exception as e:
+        print(f"MedGemma chat error: {e}")
+        
+    return {"reply": "I'm sorry, I couldn't reach the AI reasoning engine to answer this question right now."}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # /extract  – mock CaseProfile extraction
 # When MedGemma becomes available, replace _extract_profile() body only.
 # ──────────────────────────────────────────────────────────────────────────────
