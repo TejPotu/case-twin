@@ -12,6 +12,7 @@ import uuid
 from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
@@ -87,7 +88,8 @@ async def search(
 async def compare_insights(
     original_image: UploadFile = File(...),
     match_diagnosis: str = Form(...),
-    match_image_url: str = Form(None)
+    match_image_url: str = Form(None),
+    match_payload: str = Form(None)
 ):
     """
     Given the original uploaded image and the diagnosis of the matched case,
@@ -114,13 +116,20 @@ async def compare_insights(
                     match_pil = Image.open(io.BytesIO(r.content)).convert("RGB")
         except Exception as e:
             print(f"Warning: could not fetch matched image {match_image_url}: {e}")
+
+    # Parse match payload for context
+    parsed_payload = {}
+    if match_payload:
+        try:
+            parsed_payload = json.loads(match_payload)
+        except Exception as e:
+            print(f"Warning: failed to parse match_payload JSON: {e}")
             
     # Query MedGemma for bounding boxes for original
     prompt = f"Return the bounding box coordinates [ymin, xmin, ymax, xmax] for the finding '{match_diagnosis}' in this chest X-ray."
     
     orig_box = None
     match_box = None
-    similarity_text = f"The model identified visual patterns strongly correlated with {match_diagnosis} in the highlighted regions."
     
     # Helper to parse MedGemma [y1, x1, y2, x2] response strings
     def parse_box(text):
@@ -129,7 +138,30 @@ async def compare_insights(
             return [int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))]
         return None
         
-    # Query for original image
+    # Helper to describe the box position
+    def get_region_text(box):
+        if not box: return "an unspecified region"
+        y1, x1, y2, x2 = box
+        xc = (x1 + x2) / 2
+        yc = (y1 + y2) / 2
+        
+        if yc < 333:
+            v = "upper"
+        elif yc < 666:
+            v = "mid"
+        else:
+            v = "lower"
+            
+        if xc < 333:
+            h = "left"
+        elif xc < 666:
+            h = "central"
+        else:
+            h = "right"
+            
+        return f"{v} {h} region"
+        
+    # Query for original image box
     try:
         resp = query_medgemma(orig_pil, prompt=prompt, max_tokens=50)
         if isinstance(resp, list) and len(resp) > 0:
@@ -177,11 +209,67 @@ async def compare_insights(
                 min(1000, orig_box[2] + y_shift),
                 min(1000, orig_box[3] + x_shift)
             ]
-        
+
+    orig_region = get_region_text(orig_box) if orig_box else "the affected region"
+    match_region = get_region_text(match_box) if match_box else "the affected region"
+    
+    import re
+
+    # Build a tight prompt that forces a single, concise, non-repeating output
+    hpi = parsed_payload.get("presentation", {}).get("hpi", "")
+    outcome = parsed_payload.get("outcome", {}).get("detail", "")
+
+    unified_prompt = (
+        f"You are a radiology AI assistant. Analyze this chest X-ray for suspected '{match_diagnosis}'. "
+        f"The primary finding in the current image is in the {orig_region}. "
+        f"The historical twin case had primary involvement in the {match_region}. "
+        f"Clinical history: {hpi or 'not provided'}. Historical outcome: {outcome or 'not provided'}. "
+        f"Write exactly 5-6 sentences. Cover: (1) what the current finding looks like, "
+        f"(2) why the highlighted region is clinically significant, "
+        f"(3) how it visually compares to the historical case, "
+        f"(4) what this similarity suggests prognostically. "
+        f"Use **bold** for key medical terms. Do NOT repeat yourself. Stop after 6 sentences."
+    )
+
+    try:
+        import asyncio
+        resp = await asyncio.to_thread(query_medgemma, orig_pil, prompt=unified_prompt, max_tokens=400)
+        gen_text = "AI analysis unavailable."
+        if isinstance(resp, list) and len(resp) > 0 and resp[0].get("generated_text"):
+            raw = resp[0]["generated_text"].strip()
+            # Strip prompt echo if model returns the full prompt+completion
+            if raw.startswith(unified_prompt):
+                raw = raw[len(unified_prompt):].strip()
+            # Remove any leading "markdown" / code fence artifacts
+            raw = re.sub(r"^```(?:markdown)?\s*", "", raw, flags=re.IGNORECASE).strip()
+            raw = re.sub(r"```$", "", raw).strip()
+            # Strip LaTeX boxed notation the model sometimes wraps output in
+            # e.g.  $\boxed{The current image shows...}$  or  \boxed{...}
+            raw = re.sub(r"\$?\\?boxed\{(.+?)\}\$?", r"\1", raw, flags=re.DOTALL)
+            raw = raw.strip()
+            # Deduplicate: if the model loops, keep only the first unique occurrence
+            # Split on common sentence-repeat markers
+            seen = set()
+            sentences = re.split(r"(?<=[.!?])\s+", raw)
+            deduped = []
+            for s in sentences:
+                key = s.strip().lower()[:60]
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(s.strip())
+                # Stop after 6 sentences
+                if len(deduped) >= 6:
+                    break
+            gen_text = " ".join(deduped)
+
+    except Exception as e:
+        print(f"MedGemma unified extraction error: {e}")
+        gen_text = "Unable to complete AI analysis at this time."
+
     return {
-        "similarity_text": similarity_text,
+        "insights_text": gen_text,
         "original_box": orig_box,
-        "match_box": match_box
+        "match_box": match_box,
     }
 
 
