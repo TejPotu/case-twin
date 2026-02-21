@@ -16,6 +16,7 @@ export interface MatchItem {
   year?: string;
   radiology_view?: string;
   case_text?: string;
+  raw_payload?: Record<string, any>;
 }
 
 import type { CaseProfile } from "./caseProfileTypes";
