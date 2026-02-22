@@ -41,6 +41,7 @@ const PHASE_LABELS: Record<OrchestratorPhase, string> = {
     patching: "Updating profile…",
     questioning: "Awaiting your input",
     ready: "Profile complete",
+    expanded: "Profile complete + extended",
 };
 
 const PHASE_DOT_CLASS: Record<OrchestratorPhase, string> = {
@@ -49,6 +50,7 @@ const PHASE_DOT_CLASS: Record<OrchestratorPhase, string> = {
     patching: "bg-[var(--mr-warning)] animate-pulse",
     questioning: "bg-[var(--mr-action)]",
     ready: "bg-[var(--mr-success)]",
+    expanded: "bg-indigo-500",
 };
 
 // ─── Sub-components ────────────────────────────────────────────────────────
@@ -72,6 +74,23 @@ function FieldPatchBadge({ fields }: { fields: string[] }) {
                 >
                     <Check className="h-2.5 w-2.5" />
                     {f}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+function SchemaExpansionBadge({ fields }: { fields: string[] }) {
+    return (
+        <div className="flex flex-wrap gap-1.5 self-start">
+            {fields.map(f => (
+                <span
+                    key={f}
+                    className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700"
+                >
+                    <Check className="h-2.5 w-2.5" />
+                    {f}
+                    <span className="ml-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-400">ext</span>
                 </span>
             ))}
         </div>
@@ -161,6 +180,7 @@ function MessageBubble({
 }) {
     if (msg.type === "thinking") return <ThinkingBubble content={msg.content} />;
     if (msg.type === "field_patch" && msg.patchedFields) return <FieldPatchBadge fields={msg.patchedFields} />;
+    if (msg.type === "schema_expansion" && msg.patchedFields) return <SchemaExpansionBadge fields={msg.patchedFields} />;
     if (msg.type === "confidence_update" && msg.confidence !== undefined) return <ConfidenceBar score={msg.confidence} />;
     if (msg.type === "cta") return <CtaBanner onProceed={onProceed} />;
 
@@ -301,13 +321,10 @@ export function AgenticCopilotPanel({
         setPendingFiles([]);
         setIsProcessing(true);
 
-        // ── Capture clean pre-turn state BEFORE appending any thinking bubbles.
+        // Capture clean pre-turn state BEFORE appending any thinking bubbles.
         // This is what we'll pass to the orchestrator so its result is built
         // off clean messages — no thinking bubbles in the lineage.
         const cleanSnapshot = stateRef.current;
-
-        const isFullExtract = filesToSend.length > 0 || text.length > 30;
-        const isShortPatch = !isFullExtract && text.length > 0;
 
         // Build a local user message for the thinking-stage display only.
         // The orchestrator will build its own canonical user message internally.
@@ -323,60 +340,42 @@ export function AgenticCopilotPanel({
             })),
         };
 
-        if (isFullExtract) {
-            const stage1Label = filesToSend.length > 0
-                ? `Parsing ${filesToSend.length} file${filesToSend.length > 1 ? "s" : ""}…`
-                : "Parsing clinical narrative…";
+        const stage1Label = filesToSend.length > 0
+            ? `Parsing ${filesToSend.length} file${filesToSend.length > 1 ? "s" : ""}…`
+            : "Parsing clinical note…";
 
-            // Stage 1 — show user msg + first thinking bubble
-            setState(prev => ({
-                ...prev,
-                phase: "extracting",
-                messages: [
-                    ...prev.messages,
-                    previewUserMsg,
-                    { id: `t1-${Date.now()}`, role: "assistant", type: "thinking", content: stage1Label } as OrchestratorMessage,
-                ],
-            }));
-            await sleep(750);
+        // Stage 1 — show user msg + first thinking bubble
+        setState(prev => ({
+            ...prev,
+            phase: "extracting",
+            messages: [
+                ...prev.messages,
+                previewUserMsg,
+                { id: `t1-${Date.now()}`, role: "assistant", type: "thinking", content: stage1Label } as OrchestratorMessage,
+            ],
+        }));
+        await sleep(500);
 
-            // Stage 2
-            setState(prev => ({
-                ...prev,
-                messages: [
-                    ...prev.messages,
-                    { id: `t2-${Date.now()}`, role: "assistant", type: "thinking", content: "Extracting structured FHIR fields…" } as OrchestratorMessage,
-                ],
-            }));
-            await sleep(750);
+        // Stage 2
+        setState(prev => ({
+            ...prev,
+            messages: [
+                ...prev.messages,
+                { id: `t2-${Date.now()}`, role: "assistant", type: "thinking", content: "Extracting structured fields…" } as OrchestratorMessage,
+            ],
+        }));
+        await sleep(500);
 
-            // Stage 3
-            setState(prev => ({
-                ...prev,
-                messages: [
-                    ...prev.messages,
-                    { id: `t3-${Date.now()}`, role: "assistant", type: "thinking", content: "Mapping to case profile schema…" } as OrchestratorMessage,
-                ],
-            }));
-            await sleep(400);
+        // Stage 3
+        setState(prev => ({
+            ...prev,
+            messages: [
+                ...prev.messages,
+                { id: `t3-${Date.now()}`, role: "assistant", type: "thinking", content: "Updating profile…" } as OrchestratorMessage,
+            ],
+        }));
+        await sleep(200);
 
-        } else if (isShortPatch) {
-            setState(prev => ({
-                ...prev,
-                phase: "extracting",
-                messages: [
-                    ...prev.messages,
-                    previewUserMsg,
-                    { id: `tp-${Date.now()}`, role: "assistant", type: "thinking", content: "Updating case profile…" } as OrchestratorMessage,
-                ],
-            }));
-            await sleep(600);
-        } else {
-            setState(prev => ({
-                ...prev,
-                messages: [...prev.messages, previewUserMsg],
-            }));
-        }
 
         try {
             // Pass the CLEAN snapshot (no thinking bubbles) to the orchestrator.
@@ -553,8 +552,8 @@ export function AgenticCopilotPanel({
                         placeholder={
                             state.phase === "greeting"
                                 ? "Ask Copilot, attach a file, or add evidence..."
-                                : state.phase === "ready"
-                                    ? "Profile complete — or continue to add detail..."
+                                : state.phase === "ready" || state.phase === "expanded"
+                                    ? "Profile complete — continue adding supplemental information..."
                                     : "Answer the question above, or add more evidence..."
                         }
                         className="flex-1 resize-none bg-transparent py-2.5 text-[14.5px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-none"

@@ -15,6 +15,13 @@ export interface CaseProfile {
     outcome: OutcomeInfo;
     provenance: ProvenanceInfo;
     tags: TagsInfo;
+
+    /**
+     * Dynamic key-value pairs for any information that doesn't fit the base schema.
+     * Populated at any point during the intake chat — before or after 100% base completeness.
+     * Never sent to the matching endpoint; used only for display and record enrichment.
+     */
+    extra_fields: Record<string, string | string[]>;
 }
 
 export interface PatientInfo {
@@ -213,5 +220,6 @@ export function emptyProfile(): CaseProfile {
             keywords: [],
             mesh_terms: [],
         },
+        extra_fields: {},
     };
 }

@@ -855,4 +855,90 @@ async def _extract_profile(images: Optional[List[UploadFile]], text: str) -> dic
     if diag:
         profile["summary"]["key_points"] = [f"Primary finding: {diag}"]
 
+    # ── Extra Fields (schema expansion) ──────────────────────────────────────
+    # Scan for clinical data that doesn't fit the base schema.
+    # These are captured at ANY point during intake (any confidence level).
+    extra_fields: dict = {}
+
+    # Smoking / tobacco
+    smoke_m = re.search(
+        r"(?:smok(?:ing|er|es)|tobacco)[^\.\n]{0,60}?((?:\d+\s*)?(?:pack[- ]?year|cigarette|cigar|pipe)[^\.\n]{0,40})?",
+        text, re.I
+    )
+    if smoke_m:
+        detail = smoke_m.group(1)
+        extra_fields["smoking_status"] = detail.strip() if detail and detail.strip() else "smoker"
+
+    # Never smoked
+    if re.search(r"non[- ]?smok|never smoked|no smoking", text, re.I):
+        extra_fields["smoking_status"] = "non-smoker"
+
+    # Alcohol use
+    alcohol_m = re.search(r"alcohol[^\.\n]{0,80}", text, re.I)
+    if alcohol_m:
+        snippet = alcohol_m.group(0).strip()
+        extra_fields["alcohol_use"] = snippet[:120]
+
+    # BMI / weight / height
+    bmi_m = re.search(r"BMI\s*(?:of\s*)?(\d{1,2}(?:\.\d)?)", text, re.I)
+    if bmi_m:
+        extra_fields["bmi"] = bmi_m.group(1)
+
+    height_m = re.search(r"(\d{1,3})\s*(?:cm|ft|feet|inches?)", text, re.I)
+    if height_m and "bmi" not in extra_fields:
+        extra_fields["height"] = f"{height_m.group(1)} {height_m.group(0).split(height_m.group(1))[-1].strip()}"
+
+    # Blood type
+    blood_m = re.search(r"\b(A|B|AB|O)[+-]?\s*blood\s*type|\bblood\s*type\s*(A|B|AB|O)[+-]?\b", text, re.I)
+    if blood_m:
+        extra_fields["blood_type"] = (blood_m.group(1) or blood_m.group(2)).upper()
+
+    # Family history
+    fam_m = re.search(r"family\s*(?:history|hx)[^\.\n]{0,150}", text, re.I)
+    if fam_m:
+        extra_fields["family_history"] = fam_m.group(0).strip()[:200]
+
+    # Occupation / employment
+    occ_m = re.search(r"(?:occupation|works?\s*as|employed\s*(?:as|at)|profession)[^\.\n]{0,80}", text, re.I)
+    if occ_m:
+        extra_fields["occupation"] = occ_m.group(0).strip()[:120]
+
+    # Ethnicity / race
+    eth_m = re.search(
+        r"(?:ethnicity|race|racial background)\s*[:\-]?\s*([A-Za-z\s\-]+)",
+        text, re.I
+    )
+    if eth_m:
+        extra_fields["ethnicity"] = eth_m.group(1).strip()[:60]
+
+    # Vaccination status
+    vax_m = re.search(r"(?:vaccin|immuniz)[^\.\n]{0,80}", text, re.I)
+    if vax_m:
+        extra_fields["vaccination"] = vax_m.group(0).strip()[:120]
+
+    # Travel history
+    travel_m = re.search(r"(?:travel(?:led|ed)?\s*(?:to|from)|recent\s*travel)[^\.\n]{0,100}", text, re.I)
+    if travel_m:
+        extra_fields["travel_history"] = travel_m.group(0).strip()[:150]
+
+    # Functional status / ADLs
+    func_m = re.search(r"(?:functional status|ADLs?|activities of daily|ambulates?|independent)[^\.\n]{0,80}", text, re.I)
+    if func_m:
+        extra_fields["functional_status"] = func_m.group(0).strip()[:120]
+
+    # Code status / DNR
+    code_m = re.search(r"(?:code\s*status|full\s*code|DNR|DNI|comfort\s*care)[^\.\n]{0,60}", text, re.I)
+    if code_m:
+        extra_fields["code_status"] = code_m.group(0).strip()[:80]
+
+    # Social history (catch-all if not already captured)
+    social_m = re.search(r"social\s*(?:history|hx)[^\.\n]{0,200}", text, re.I)
+    if social_m:
+        extra_fields["social_history"] = social_m.group(0).strip()[:250]
+
+    if extra_fields:
+        profile["extra_fields"] = extra_fields
+    else:
+        profile["extra_fields"] = {}
+
     return profile
