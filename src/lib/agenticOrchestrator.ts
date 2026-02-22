@@ -15,7 +15,8 @@ export type OrchestratorPhase =
     | "extracting"
     | "patching"
     | "questioning"
-    | "ready";
+    | "ready"
+    | "expanded";
 
 export type MessageType =
     | "text"
@@ -23,6 +24,7 @@ export type MessageType =
     | "thinking"
     | "confidence_update"
     | "field_patch"
+    | "schema_expansion"
     | "cta";
 
 export interface OrchestratorMessage {
@@ -118,146 +120,101 @@ export async function processIntakeTurn(input: ProcessTurnInput): Promise<Proces
     const firstImageFile = files.find(f => f.type.startsWith("image/") || f.name.endsWith(".dcm"));
     const localImageUrl = firstImageFile ? URL.createObjectURL(firstImageFile) : null;
 
-    // ── Path A: Files or substantive text → run full extraction ──────────
-    if (files.length > 0 || userText.trim().length > 30) {
-        // Run extraction (thinking stages are handled by the panel)
-        const images = files.filter(f => f.type.startsWith("image/") || f.name.endsWith(".dcm"));
-        const docs = files.filter(f => !f.type.startsWith("image/") && !f.name.endsWith(".dcm"));
-        const notesFile = docs[0] ?? null;
+    // ── Unified path: always run extraction for any non-empty text or files ──
+    // Short text (e.g. "He drinks heavy alcohol") is just as important as long text.
+    // We run the same extraction pipeline for everything — the client-side fallback
+    // handles it instantly when the backend is offline.
+    const hasInput = files.length > 0 || userText.trim().length > 0;
 
-        let newProfile: CaseProfile;
-        try {
-            newProfile = await extractCaseProfile(images, userText, notesFile);
-        } catch {
-            newProfile = prevProfile; // keep what we had
-        }
-
-        // Merge with existing profile (keep already-captured fields)
-        let mergedProfile = mergeProfiles(prevProfile, newProfile);
-        // Inject local image URL if an image was uploaded
-        if (localImageUrl && !mergedProfile.study.image_url) {
-            mergedProfile = { ...mergedProfile, study: { ...mergedProfile.study, image_url: localImageUrl } };
-        }
-
-        const conf = computeProfileConfidence(mergedProfile);
-        const patchedFields = diffProfileFields(prevProfile, mergedProfile);
-
-        // Build assistant response
-        const followup = generateAgenticFollowup(mergedProfile, conf.score);
-        const patchSummary = patchedFields.length > 0
-            ? summarizePatch(patchedFields)
-            : null;
-
-        const assistantContent = [
-            patchSummary,
-            followup.message,
-        ].filter(Boolean).join("\n\n");
-
-        const confMsg: OrchestratorMessage = {
-            id: msgId(),
-            role: "assistant",
-            type: "confidence_update",
-            content: `Profile completeness: ${conf.score}%`,
-            confidence: conf.score,
-        };
-
-        const assistantReply = assistantMsg(assistantContent);
-
-        const allMessages = [
-            ...outgoingMessages,
-            patchedFields.length > 0
-                ? { id: msgId(), role: "assistant" as const, type: "field_patch" as MessageType, content: "", patchedFields }
-                : null,
-            confMsg,
-            assistantReply,
-        ].filter(Boolean) as OrchestratorMessage[];
-
-        const nextQuestion = followup.priority_fields[0] ?? null;
-
-        // Show proceed CTA if ready
-        let ctaMessage: OrchestratorMessage | null = null;
-        if (conf.score >= READY_THRESHOLD) {
-            ctaMessage = assistantMsg(
-                "The profile is comprehensive. You can proceed to find case matches.",
-                "cta",
-                { confidence: conf.score }
-            );
-            allMessages.push(ctaMessage);
-        }
-
-        const newState: OrchestratorState = {
-            profile: mergedProfile,
-            phase: conf.score >= READY_THRESHOLD ? "ready" : "questioning",
-            messages: [...currentState.messages, ...allMessages],
-            currentQuestion: nextQuestion,
-            readyToProceed: conf.score >= READY_THRESHOLD,
-        };
-
-        return { newState };
+    if (!hasInput) {
+        // Nothing to process — return state unchanged
+        return { newState: currentState };
     }
 
-    // ── Path B: Short text answer to a follow-up question ─────────────────
-    if (userText.trim().length > 0 && currentState.currentQuestion) {
-        const thinkingPatch = thinkingMsg("Updating case profile…");
+    const images = files.filter(f => f.type.startsWith("image/") || f.name.endsWith(".dcm"));
+    const docs = files.filter(f => !f.type.startsWith("image/") && !f.name.endsWith(".dcm"));
+    const notesFile = docs[0] ?? null;
 
-        const patched = patchProfileFromAnswer(
-            currentState.currentQuestion,
-            userText.trim(),
-            prevProfile
-        );
-
-        const conf = computeProfileConfidence(patched);
-        const patchedFields = diffProfileFields(prevProfile, patched);
-
-        const followup = generateAgenticFollowup(patched, conf.score);
-
-        const allMessages: OrchestratorMessage[] = [
-            userMessage,
-            thinkingPatch,
-            patchedFields.length > 0
-                ? { id: msgId(), role: "assistant" as const, type: "field_patch" as MessageType, content: "", patchedFields }
-                : null,
-            {
-                id: msgId(),
-                role: "assistant",
-                type: "confidence_update",
-                content: `Profile completeness: ${conf.score}%`,
-                confidence: conf.score,
-            },
-            assistantMsg(followup.message),
-        ].filter(Boolean) as OrchestratorMessage[];
-
-        if (conf.score >= READY_THRESHOLD) {
-            allMessages.push(assistantMsg(
-                "The profile is comprehensive. You can proceed to find case matches.",
-                "cta",
-                { confidence: conf.score }
-            ));
-        }
-
-        return {
-            newState: {
-                profile: patched,
-                phase: conf.score >= READY_THRESHOLD ? "ready" : "questioning",
-                messages: [...currentState.messages, ...allMessages],
-                currentQuestion: followup.priority_fields[0] ?? null,
-                readyToProceed: conf.score >= READY_THRESHOLD,
-            }
-        };
+    let newProfile: CaseProfile;
+    try {
+        newProfile = await extractCaseProfile(images, userText, notesFile);
+    } catch {
+        // Backend offline or error — keep previous profile so we never get stuck
+        newProfile = prevProfile;
     }
 
-    // ── Path C: Short text, no active question — generic nudge ────────────
-    const nudge = assistantMsg(
-        "Got it! To build up the case profile, try sharing clinical notes (at least a few sentences) or upload an imaging study."
-    );
+    // Merge with existing profile (keep already-captured fields)
+    let mergedProfile = mergeProfiles(prevProfile, newProfile);
+
+    // Inject local image URL if an image was uploaded
+    if (localImageUrl && !mergedProfile.study.image_url) {
+        mergedProfile = { ...mergedProfile, study: { ...mergedProfile.study, image_url: localImageUrl } };
+    }
+
+    const conf = computeProfileConfidence(mergedProfile);
+    const patchedFields = diffProfileFields(prevProfile, mergedProfile);
+    const expandedFields = diffExtraFields(prevProfile.extra_fields ?? {}, mergedProfile.extra_fields ?? {});
+
+    // Build assistant response
+    const followup = generateAgenticFollowup(mergedProfile, conf.score);
+    const patchSummary = patchedFields.length > 0
+        ? summarizePatch(patchedFields)
+        : null;
+    const expandSummary = expandedFields.length > 0
+        ? `✓ Extended — captured: ${expandedFields.join(", ")}.`
+        : null;
+
+    const assistantContent = [
+        patchSummary ?? expandSummary,
+        followup.message,
+    ].filter(Boolean).join("\n\n");
+
+    const confMsg: OrchestratorMessage = {
+        id: msgId(),
+        role: "assistant",
+        type: "confidence_update",
+        content: `Profile completeness: ${conf.score}%`,
+        confidence: conf.score,
+    };
+
+    const assistantReply = assistantMsg(assistantContent);
+
+    const allMessages: OrchestratorMessage[] = [
+        userMessage,
+        patchedFields.length > 0
+            ? { id: msgId(), role: "assistant" as const, type: "field_patch" as MessageType, content: "", patchedFields }
+            : null,
+        expandedFields.length > 0
+            ? { id: msgId(), role: "assistant" as const, type: "schema_expansion" as MessageType, content: "", patchedFields: expandedFields }
+            : null,
+        confMsg,
+        assistantReply,
+    ].filter(Boolean) as OrchestratorMessage[];
+
+    if (conf.score >= READY_THRESHOLD) {
+        allMessages.push(assistantMsg(
+            "The profile is comprehensive. You can proceed to find case matches.",
+            "cta",
+            { confidence: conf.score }
+        ));
+    }
+
+    const hasExtraFields = Object.keys(mergedProfile.extra_fields ?? {}).length > 0;
+    const nextPhase = conf.score >= READY_THRESHOLD
+        ? (hasExtraFields ? "expanded" : "ready")
+        : "questioning";
 
     return {
         newState: {
-            ...currentState,
-            messages: [...currentState.messages, userMessage, nudge],
+            profile: mergedProfile,
+            phase: nextPhase,
+            messages: [...currentState.messages, ...allMessages],
+            currentQuestion: followup.priority_fields[0] ?? null,
+            readyToProceed: conf.score >= READY_THRESHOLD,
         }
     };
 }
+
 
 // ─── Profile Diff ──────────────────────────────────────────────────────────
 
@@ -294,6 +251,21 @@ function diffProfileFields(prev: CaseProfile, next: CaseProfile): string[] {
     return changed;
 }
 
+/** Returns new or changed extra_field keys */
+function diffExtraFields(
+    prev: Record<string, string | string[]>,
+    next: Record<string, string | string[]>
+): string[] {
+    const changed: string[] = [];
+    for (const key of Object.keys(next)) {
+        if (JSON.stringify(next[key]) !== JSON.stringify(prev[key])) {
+            // Format key nicely: "smoking_status" → "Smoking Status"
+            changed.push(key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()));
+        }
+    }
+    return changed;
+}
+
 // ─── Profile Merge ─────────────────────────────────────────────────────────
 
 /** Merge two profiles: keep truthy values, prefer `next` for filled fields */
@@ -302,6 +274,12 @@ export function mergeProfiles(base: CaseProfile, next: CaseProfile): CaseProfile
         const isEmpty = (v: unknown) =>
             v === null || v === undefined || v === "" || (Array.isArray(v) && (v as unknown[]).length === 0);
         return isEmpty(b) ? a : b;
+    };
+
+    // Merge extra_fields: union of both, next wins on conflicts
+    const mergedExtra: Record<string, string | string[]> = {
+        ...(base.extra_fields ?? {}),
+        ...(next.extra_fields ?? {}),
     };
 
     return {
@@ -348,6 +326,7 @@ export function mergeProfiles(base: CaseProfile, next: CaseProfile): CaseProfile
             key_points: pick(base.summary.key_points, next.summary.key_points),
             red_flags: pick(base.summary.red_flags, next.summary.red_flags),
         },
+        extra_fields: mergedExtra,
     };
 }
 

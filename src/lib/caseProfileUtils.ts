@@ -216,6 +216,64 @@ function clientSideExtract(images: File[], notes: string): CaseProfile {
     if (p.assessment.diagnosis_primary)
         p.summary.key_points = [`Primary finding: ${p.assessment.diagnosis_primary}`];
 
+    // --- extra_fields (schema expansion) ---
+    // Capture at any confidence level — anything outside the base schema.
+    const extra: Record<string, string | string[]> = {};
+
+    // Smoking
+    if (/non[- ]?smok|never smoked|no smoking/i.test(text)) {
+        extra.smoking_status = "non-smoker";
+    } else {
+        const smokeM = text.match(/(?:smok(?:ing|er|es)|tobacco)[^\.\n]{0,60}?((?:\d+\s*)?(?:pack[- ]?year|cigarette|cigar|pipe)[^\.\n]{0,40})?/i);
+        if (smokeM) extra.smoking_status = (smokeM[1] ?? "").trim() || "smoker";
+    }
+
+    // Alcohol
+    const alcoholM = text.match(/alcohol[^\.\n]{0,80}/i);
+    if (alcoholM) extra.alcohol_use = alcoholM[0].trim().slice(0, 120);
+
+    // BMI
+    const bmiM = text.match(/BMI\s*(?:of\s*)?(\d{1,2}(?:\.\d)?)/i);
+    if (bmiM) extra.bmi = bmiM[1];
+
+    // Blood type
+    const bloodM = text.match(/\b(A|B|AB|O)[+-]?\s*blood\s*type|\bblood\s*type\s*(A|B|AB|O)[+-]?\b/i);
+    if (bloodM) extra.blood_type = (bloodM[1] || bloodM[2])!.toUpperCase();
+
+    // Family history
+    const famM = text.match(/family\s*(?:history|hx)[^\.\n]{0,150}/i);
+    if (famM) extra.family_history = famM[0].trim().slice(0, 200);
+
+    // Occupation
+    const occM = text.match(/(?:occupation|works?\s*as|employed\s*(?:as|at)|profession)[^\.\n]{0,80}/i);
+    if (occM) extra.occupation = occM[0].trim().slice(0, 120);
+
+    // Ethnicity
+    const ethM = text.match(/(?:ethnicity|race|racial background)\s*[:\-]?\s*([A-Za-z\s\-]+)/i);
+    if (ethM) extra.ethnicity = ethM[1].trim().slice(0, 60);
+
+    // Vaccination
+    const vaxM = text.match(/(?:vaccin|immuniz)[^\.\n]{0,80}/i);
+    if (vaxM) extra.vaccination = vaxM[0].trim().slice(0, 120);
+
+    // Travel
+    const travelM = text.match(/(?:travel(?:led|ed)?\s*(?:to|from)|recent\s*travel)[^\.\n]{0,100}/i);
+    if (travelM) extra.travel_history = travelM[0].trim().slice(0, 150);
+
+    // Functional status
+    const funcM = text.match(/(?:functional status|ADLs?|activities of daily|ambulates?|independent)[^\.\n]{0,80}/i);
+    if (funcM) extra.functional_status = funcM[0].trim().slice(0, 120);
+
+    // Code status
+    const codeM = text.match(/(?:code\s*status|full\s*code|DNR|DNI|comfort\s*care)[^\.\n]{0,60}/i);
+    if (codeM) extra.code_status = codeM[0].trim().slice(0, 80);
+
+    // Social history
+    const socialM = text.match(/social\s*(?:history|hx)[^\.\n]{0,200}/i);
+    if (socialM) extra.social_history = socialM[0].trim().slice(0, 250);
+
+    p.extra_fields = extra;
+
     return p;
 }
 

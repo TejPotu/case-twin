@@ -24,6 +24,7 @@ import {
     ClipboardList,
     ExternalLink,
     FileImage,
+    FlaskConical,
     Heart,
     Layers,
     Microscope,
@@ -482,6 +483,32 @@ function TagsSection({ tags }: { tags: TagsInfo }) {
     );
 }
 
+function ExtraFieldsSection({ extra }: { extra: Record<string, string | string[]> }) {
+    const entries = Object.entries(extra).filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0));
+    if (entries.length === 0) return null;
+
+    return (
+        <SectionCard
+            icon={<FlaskConical className="h-4 w-4" />}
+            title="Additional Information"
+        >
+            <div className="grid grid-cols-1 gap-y-3 sm:grid-cols-2 sm:gap-x-6">
+                {entries.map(([key, value]) => {
+                    const label = key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+                    const displayValue = Array.isArray(value) ? value.join(", ") : value;
+                    return (
+                        <div key={key} className="space-y-0.5">
+                            <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">{label}</p>
+                            <p className="text-[14px] text-zinc-800 leading-snug break-words">{displayValue}</p>
+                        </div>
+                    );
+                })}
+            </div>
+        </SectionCard>
+    );
+}
+
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function CaseProfileView({ profile, className }: { profile: CaseProfile; className?: string }) {
@@ -495,6 +522,7 @@ export function CaseProfileView({ profile, className }: { profile: CaseProfile; 
         <OutcomeSection key="outcome" outcome={profile.outcome} />,
         <ProvenanceSection key="provenance" prov={profile.provenance} />,
         <TagsSection key="tags" tags={profile.tags} />,
+        <ExtraFieldsSection key="extra" extra={profile.extra_fields ?? {}} />,
     ];
 
     return (

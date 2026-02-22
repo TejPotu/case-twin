@@ -91,6 +91,8 @@ export function generateAgenticFollowup(profile: CaseProfile, confidence: number
         return isEmpty(val);
     });
 
+    const extraCount = Object.keys(profile.extra_fields ?? {}).length;
+
     let thought = "";
     let message = "";
 
@@ -108,16 +110,21 @@ export function generateAgenticFollowup(profile: CaseProfile, confidence: number
         message = first
             ? `Profile is taking shape. Next: ${first.question}`
             : "Looking good — a bit more detail would help strengthen the assessment.";
-    } else if (confidence < 85) {
+    } else if (confidence < 100) {
         const first = missingPriority[0];
         thought = `Good confidence (${confidence}%). Polishing.`;
         message = first
             ? `Profile is strong. One more detail: ${first.question}`
             : "The profile is very comprehensive. Ready to proceed when you are.";
     } else {
-        thought = "Comprehensive profile reached.";
-        message =
-            "This case profile is detailed and complete. I've captured all critical fields — you can proceed to finding case matches.";
+        thought = "Base profile 100% complete.";
+        if (extraCount > 0) {
+            message =
+                `Base profile is complete ✓. ${extraCount} extended field${extraCount > 1 ? "s" : ""} captured beyond the schema. You can continue sharing supplemental information — I'll keep enriching the record.`;
+        } else {
+            message =
+                "This case profile is detailed and complete. I've captured all critical fields — you can proceed to finding case matches, or continue to add supplemental information.";
+        }
     }
 
     return {
@@ -240,8 +247,15 @@ export function patchProfileFromAnswer(
             else patched.study.modality = text;
             break;
         }
-        default:
+        default: {
+            // Free-text answer: try to store as an extra_field using the fieldKey as the key
+            // (e.g., "extra_fields.smoking_status" → patched.extra_fields.smoking_status)
+            if (fieldKey.startsWith("extra_fields.")) {
+                const subKey = fieldKey.replace("extra_fields.", "");
+                patched.extra_fields = { ...(patched.extra_fields ?? {}), [subKey]: text };
+            }
             break;
+        }
     }
 
     // Regenerate one-liner if we have enough

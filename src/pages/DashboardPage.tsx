@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import ReactMarkdown from "react-markdown";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const defaultIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -420,6 +422,16 @@ function MatchCard({
         <div className="space-y-1.5 min-w-0">
           <h3 className="font-semibold text-zinc-900 text-[14px] leading-snug line-clamp-2 group-hover:text-[var(--mr-action)] transition-colors break-words">{item.diagnosis}</h3>
           <p className="text-[12px] leading-relaxed text-zinc-500 line-clamp-2 break-words">{item.summary}</p>
+          {item.raw_payload && item.raw_payload.patient?.comorbidities?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {item.raw_payload.patient.comorbidities.slice(0, 2).map((c: string, i: number) => (
+                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-100 text-zinc-600 border border-zinc-200 truncate max-w-[100px]">{c}</span>
+              ))}
+              {item.raw_payload.patient.comorbidities.length > 2 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-zinc-50 text-zinc-400">+{item.raw_payload.patient.comorbidities.length - 2}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap text-[10px] font-medium text-zinc-400 uppercase tracking-wider mt-1 gap-x-2 gap-y-1">
           <span className="truncate max-w-[120px]">{item.facility}</span>
@@ -445,7 +457,20 @@ function MatchCard({
       <div className="min-w-0 flex-1 space-y-1.5 pr-4 py-1">
         <p className="text-[15px] font-semibold leading-[20px] text-zinc-900 group-hover:text-[var(--mr-action)] transition-colors line-clamp-2 break-words">{item.diagnosis}</p>
         <p className="text-[13px] leading-[20px] text-zinc-500 line-clamp-2 break-words">{item.summary}</p>
-        <div className="flex flex-wrap text-[11px] text-zinc-400 gap-x-3 gap-y-1 mt-1 font-medium">
+
+        {/* Rich Data Tags from raw_payload */}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {item.raw_payload?.patient?.comorbidities?.slice(0, 3).map((c: string, idx: number) => (
+            <span key={idx} className="text-[11px] px-2 py-0.5 bg-zinc-100 text-zinc-700 rounded-md border border-zinc-200/80 truncate max-w-[150px]">{c}</span>
+          ))}
+          {item.raw_payload?.presentation?.chief_complaint && (
+            <span className="text-[11px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-100 truncate max-w-[200px]" title="Chief Complaint">
+              🚨 {item.raw_payload.presentation.chief_complaint.slice(0, 40)}{item.raw_payload.presentation.chief_complaint.length > 40 ? "..." : ""}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap text-[11px] text-zinc-400 gap-x-3 gap-y-1 mt-2 font-medium">
           {item.pmc_id && <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> {item.pmc_id}</span>}
           {item.year && <span>• {item.year}</span>}
           {item.journal && <span className="truncate max-w-[150px]">• {item.journal}</span>}
@@ -496,7 +521,7 @@ function MatchesScreen({
   const [showInsights, setShowInsights] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insights, setInsights] = useState<{
-    similarity_text: string;
+    insights_text: string;
     original_box: [number, number, number, number];
     match_box: [number, number, number, number];
   } | null>(null);
@@ -667,7 +692,7 @@ function MatchesScreen({
                           alt="Your X-ray"
                           className="w-full h-full object-contain bg-black/5"
                         />
-                        {showInsights && !insightsLoading && insights && renderBoxOverlay(insights.original_box)}
+                        {showInsights && insights && renderBoxOverlay(insights.original_box)}
                       </>
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -697,7 +722,7 @@ function MatchesScreen({
                           alt="Matched X-ray"
                           className="w-full h-full object-contain bg-black/5"
                         />
-                        {showInsights && !insightsLoading && insights && renderBoxOverlay(insights.match_box)}
+                        {showInsights && insights && renderBoxOverlay(insights.match_box)}
                       </>
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -708,150 +733,161 @@ function MatchesScreen({
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* AI Insights Explanation Panel */}
-              {showInsights && (
-                <div className="bg-[var(--mr-action)]/5 rounded-2xl border border-[var(--mr-action)]/20 p-5 mt-4 animate-in fade-in slide-in-from-top-4">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-[var(--mr-action)]/30 text-[var(--mr-action)] shadow-sm">
-                      {insightsLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Microscope className="h-5 w-5" />}
-                    </div>
-                    <div className="flex-1 mt-0.5 space-y-1">
-                      <h4 className="text-[15px] font-semibold text-zinc-900">MedGemma Concordance Analysis</h4>
-                      <p className="text-[14px] leading-relaxed text-zinc-700">
-                        {insightsLoading
-                          ? "Analyzing dual modalities to highlight structural similarities..."
-                          : insights?.similarity_text || selected.summary}
-                      </p>
+            {/* Streaming Single AI Insight */}
+            {showInsights && (
+              <div className="bg-[var(--mr-action)]/5 rounded-2xl border border-[var(--mr-action)]/20 p-6 animate-in fade-in slide-in-from-top-4 mb-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-[var(--mr-action)]/30 text-[var(--mr-action)] shadow-sm">
+                    {insightsLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Microscope className="h-5 w-5" />}
+                  </div>
+                  <div className="flex-1 mt-0.5 space-y-2 overflow-hidden">
+                    <h4 className="text-[16px] font-semibold text-zinc-900">AI Clinical Context &amp; Visual Comparison</h4>
+                    <div className="text-[14px] leading-relaxed text-zinc-700 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                      {insightsLoading ? (
+                        <p className="text-zinc-500 italic">Analyzing images and cross-referencing clinical context...</p>
+                      ) : insights?.insights_text ? (
+                        <div className="prose prose-zinc prose-sm md:prose-base max-w-none 
+                            prose-p:leading-relaxed prose-p:text-zinc-700 
+                            prose-headings:text-zinc-900 prose-headings:font-semibold 
+                            prose-strong:text-zinc-900 prose-strong:font-semibold
+                            prose-li:text-zinc-700 prose-ul:my-2 prose-li:my-1">
+                          <ReactMarkdown>{insights.insights_text}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="text-zinc-400 italic text-sm">No analysis available.</p>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              <div className="w-full h-px bg-zinc-200/60" />
 
-              {/* Structural Data Comparison */}
-              <div>
-                <h3 className="text-[18px] font-semibold text-zinc-900 mb-5">Clinical Comparison Matrix</h3>
+            <div className="w-full h-px bg-zinc-200/60" />
 
-                <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
-                  <table className="w-full table-fixed text-left border-collapse text-[14px]">
-                    <thead>
-                      <tr className="bg-zinc-50 border-b border-zinc-200/80">
-                        <th className="py-3 px-4 font-semibold text-zinc-500 uppercase tracking-wider text-xs w-1/4">Clinical Feature</th>
-                        <th className="py-3 px-4 font-semibold text-zinc-900 border-l border-zinc-200/80 w-[37.5%]">Your Uploaded Case</th>
-                        <th className="py-3 px-4 font-semibold text-zinc-900 border-l border-zinc-200/80 w-[37.5%] flex items-center gap-2">
-                          Historical Twin <Check className="h-4 w-4 text-[var(--mr-success)]" />
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
+            {/* Structural Data Comparison */}
+            <div>
+              <h3 className="text-[18px] font-semibold text-zinc-900 mb-5">Clinical Comparison Matrix</h3>
 
-                      {/* Row 1: Demographics */}
-                      <tr className="hover:bg-zinc-50/50 transition-colors">
-                        <td className="py-3 px-4 text-zinc-600 font-medium">Demographics</td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80">
-                          {originalProfile?.patient.age_years ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold mr-2 border border-blue-100">
-                              {originalProfile.patient.age_years}y
-                            </span>
-                          ) : "— "}
-                          {originalProfile?.patient.sex ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">
-                              {originalProfile.patient.sex}
-                            </span>
-                          ) : ""}
-                        </td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80">
-                          {selected.age ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold mr-2 border border-blue-100">
-                              {selected.age}y
-                            </span>
-                          ) : "— "}
-                          {selected.gender ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">
-                              {selected.gender}
-                            </span>
-                          ) : ""}
-                        </td>
-                      </tr>
+              <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
+                <table className="w-full table-fixed text-left border-collapse text-[14px]">
+                  <thead>
+                    <tr className="bg-zinc-50 border-b border-zinc-200/80">
+                      <th className="py-3 px-4 font-semibold text-zinc-500 uppercase tracking-wider text-xs w-1/4">Clinical Feature</th>
+                      <th className="py-3 px-4 font-semibold text-zinc-900 border-l border-zinc-200/80 w-[37.5%]">Your Uploaded Case</th>
+                      <th className="py-3 px-4 font-semibold text-zinc-900 border-l border-zinc-200/80 w-[37.5%] flex items-center gap-2">
+                        Historical Twin <Check className="h-4 w-4 text-[var(--mr-success)]" />
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
 
-                      {/* Row 2: Primary Diagnosis/Assessment */}
-                      <tr className="hover:bg-zinc-50/50 transition-colors">
-                        <td className="py-3 px-4 text-zinc-600 font-medium">Primary Indication</td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-900">
-                          {originalProfile?.assessment.diagnosis_primary || "Pending determination"}
-                        </td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80 text-[var(--mr-action)] font-medium">
-                          {selected.diagnosis}
-                        </td>
-                      </tr>
+                    {/* Row 1: Demographics */}
+                    <tr className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="py-3 px-4 text-zinc-600 font-medium">Demographics</td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80">
+                        {originalProfile?.patient.age_years ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold mr-2 border border-blue-100">
+                            {originalProfile.patient.age_years}y
+                          </span>
+                        ) : "— "}
+                        {originalProfile?.patient.sex ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">
+                            {originalProfile.patient.sex}
+                          </span>
+                        ) : ""}
+                      </td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80">
+                        {selected.age ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold mr-2 border border-blue-100">
+                            {selected.age}y
+                          </span>
+                        ) : "— "}
+                        {selected.gender ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">
+                            {selected.gender}
+                          </span>
+                        ) : ""}
+                      </td>
+                    </tr>
 
-                      {/* Row 3: Key Findings */}
-                      <tr className="hover:bg-zinc-50/50 transition-colors">
-                        <td className="py-3 px-4 text-zinc-600 font-medium">Imaging Findings</td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-700">
-                          <div className="flex flex-col gap-1 text-[13px]">
-                            {originalProfile?.findings.lungs.consolidation_present === "yes" && <span>• Consolidation </span>}
-                            {originalProfile?.findings.lungs.edema_present === "yes" && <span>• Edema </span>}
-                            {originalProfile?.findings.pleura.effusion_present === "yes" && <span>• Pleural Effusion </span>}
-                            {(!originalProfile?.findings.lungs.consolidation_present && !originalProfile?.findings.lungs.edema_present && !originalProfile?.findings.pleura.effusion_present) && <span className="text-zinc-400 italic">No structured findings extracted.</span>}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-700">
-                          <div className="flex flex-col gap-1 text-[13px]">
-                            {selected.raw_payload?.findings?.lungs?.consolidation_present === "yes" && <span>• Lung Consolidation</span>}
-                            {selected.raw_payload?.findings?.lungs?.edema_present === "yes" && <span>• Pulmonary Edema</span>}
-                            {selected.raw_payload?.findings?.lungs?.atelectasis_present === "yes" && <span>• Atelectasis</span>}
-                            {selected.raw_payload?.findings?.pleura?.effusion_present === "yes" && <span>• Pleural Effusion</span>}
-                            {selected.raw_payload?.findings?.pleura?.pneumothorax_present === "yes" && <span>• Pneumothorax</span>}
-                            {selected.raw_payload?.findings?.cardiomediastinal?.cardiomegaly === "yes" && <span>• Cardiomegaly</span>}
-                            {(!selected.raw_payload?.findings || Object.keys(selected.raw_payload.findings).length === 0) && (
-                              <span className="text-zinc-400 italic">Review clinical literature</span>
+                    {/* Row 2: Primary Diagnosis/Assessment */}
+                    <tr className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="py-3 px-4 text-zinc-600 font-medium">Primary Indication</td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-900">
+                        {originalProfile?.assessment.diagnosis_primary || "Pending determination"}
+                      </td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80 text-[var(--mr-action)] font-medium">
+                        {selected.diagnosis}
+                      </td>
+                    </tr>
+
+                    {/* Row 3: Key Findings */}
+                    <tr className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="py-3 px-4 text-zinc-600 font-medium">Imaging Findings</td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-700">
+                        <div className="flex flex-col gap-1 text-[13px]">
+                          {originalProfile?.findings.lungs.consolidation_present === "yes" && <span>• Consolidation </span>}
+                          {originalProfile?.findings.lungs.edema_present === "yes" && <span>• Edema </span>}
+                          {originalProfile?.findings.pleura.effusion_present === "yes" && <span>• Pleural Effusion </span>}
+                          {(!originalProfile?.findings.lungs.consolidation_present && !originalProfile?.findings.lungs.edema_present && !originalProfile?.findings.pleura.effusion_present) && <span className="text-zinc-400 italic">No structured findings extracted.</span>}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-700">
+                        <div className="flex flex-col gap-1 text-[13px]">
+                          {selected.raw_payload?.findings?.lungs?.consolidation_present === "yes" && <span>• Lung Consolidation</span>}
+                          {selected.raw_payload?.findings?.lungs?.edema_present === "yes" && <span>• Pulmonary Edema</span>}
+                          {selected.raw_payload?.findings?.lungs?.atelectasis_present === "yes" && <span>• Atelectasis</span>}
+                          {selected.raw_payload?.findings?.pleura?.effusion_present === "yes" && <span>• Pleural Effusion</span>}
+                          {selected.raw_payload?.findings?.pleura?.pneumothorax_present === "yes" && <span>• Pneumothorax</span>}
+                          {selected.raw_payload?.findings?.cardiomediastinal?.cardiomegaly === "yes" && <span>• Cardiomegaly</span>}
+                          {(!selected.raw_payload?.findings || Object.keys(selected.raw_payload.findings).length === 0) && (
+                            <span className="text-zinc-400 italic">Review clinical literature</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Row 4: Evidence Base */}
+                    <tr className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="py-3 px-4 text-zinc-600 font-medium">Evidence Base</td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-400 text-sm">
+                        Active clinical case
+                      </td>
+                      <td className="py-3 px-4 border-l border-zinc-200/80">
+                        <div className="flex flex-col gap-1 text-[13px]">
+                          <span className="font-semibold text-zinc-900 break-words line-clamp-2">{selected.article_title || selected.diagnosis}</span>
+                          <span className="font-medium text-zinc-600 max-w-full truncate">{selected.facility}</span>
+                          <div className="flex flex-wrap items-center gap-x-2 text-xs text-zinc-500 mt-1">
+                            {selected.pmc_id && (
+                              <a href={selected.raw_payload?.provenance?.source_url || `https://www.ncbi.nlm.nih.gov/pmc/articles/${selected.pmc_id}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                {selected.pmc_id}
+                              </a>
                             )}
+                            {selected.journal && <span className="truncate max-w-[120px]">• {selected.journal}</span>}
+                            {selected.year && <span>• {selected.year}</span>}
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </td>
+                    </tr>
 
-                      {/* Row 4: Evidence Base */}
-                      <tr className="hover:bg-zinc-50/50 transition-colors">
-                        <td className="py-3 px-4 text-zinc-600 font-medium">Evidence Base</td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80 text-zinc-400 text-sm">
-                          Active clinical case
-                        </td>
-                        <td className="py-3 px-4 border-l border-zinc-200/80">
-                          <div className="flex flex-col gap-1 text-[13px]">
-                            <span className="font-semibold text-zinc-900 break-words line-clamp-2">{selected.article_title || selected.diagnosis}</span>
-                            <span className="font-medium text-zinc-600 max-w-full truncate">{selected.facility}</span>
-                            <div className="flex flex-wrap items-center gap-x-2 text-xs text-zinc-500 mt-1">
-                              {selected.pmc_id && (
-                                <a href={selected.raw_payload?.provenance?.source_url || `https://www.ncbi.nlm.nih.gov/pmc/articles/${selected.pmc_id}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                                  {selected.pmc_id}
-                                </a>
-                              )}
-                              {selected.journal && <span className="truncate max-w-[120px]">• {selected.journal}</span>}
-                              {selected.year && <span>• {selected.year}</span>}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-
-                    </tbody>
-                  </table>
-                </div>
-
+                  </tbody>
+                </table>
               </div>
 
             </div>
-            {/* Chat FAB */}
-            <button
-              onClick={() => setShowTwinChat(true)}
-              className="absolute bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all z-10"
-              aria-label="Open clinical chat context"
-            >
-              <Activity className="h-6 w-6" />
-            </button>
+
           </div>
+          {/* Chat FAB */}
+          <button
+            onClick={() => setShowTwinChat(true)}
+            className="absolute bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all z-10"
+            aria-label="Open clinical chat context"
+          >
+            <Activity className="h-6 w-6" />
+          </button>
         </div>
       )}
 
@@ -866,7 +902,7 @@ function MatchesScreen({
         onClose={() => setShowTwinChat(false)}
         match={selected}
       />
-    </div>
+    </div >
   );
 }
 
@@ -943,8 +979,8 @@ function RouteScreen({
 }) {
   const safeCenters = Array.isArray(centers) ? centers : [];
   const validCenters = safeCenters.filter(c => typeof c.lat === "number" && typeof c.lng === "number");
-  const mapCenter: [number, number] = validCenters.length > 0
-    ? [validCenters[0].lat as number, validCenters[0].lng as number]
+  const mapCenter: [number, number] = validCenters.length > 0 && validCenters[0].lat !== undefined && validCenters[0].lng !== undefined
+    ? [validCenters[0].lat, validCenters[0].lng]
     : [39.8283, -98.5795]; // Default to US center
 
   // Highlight logic for keywords in reason text
@@ -1008,15 +1044,17 @@ function RouteScreen({
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               />
               {validCenters.map((center, idx) => (
-                <Marker key={idx} position={[center.lat as number, center.lng as number]} icon={defaultIcon}>
-                  <Popup>
-                    <div className="text-sm">
-                      <strong>{center.name}</strong><br />
-                      Capability: {center.capability}<br />
-                      Travel: {center.travel}
-                    </div>
-                  </Popup>
-                </Marker>
+                center.lat !== undefined && center.lng !== undefined && (
+                  <Marker key={idx} position={[center.lat, center.lng]} icon={defaultIcon}>
+                    <Popup>
+                      <div className="text-sm">
+                        <strong>{center.name}</strong><br />
+                        Capability: {center.capability}<br />
+                        Travel: {center.travel}
+                      </div>
+                    </Popup>
+                  </Marker>
+                )
               ))}
             </MapContainer>
           </div>
@@ -1486,6 +1524,7 @@ export function DashboardPage() {
 
         {step === 3 ? <MemoScreen /> : null}
       </main>
+
     </div>
   );
 }

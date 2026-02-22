@@ -56,7 +56,7 @@ export async function searchByImage(file: File, profile?: CaseProfile, limit = 5
 }
 
 export interface ComparisonInsights {
-  similarity_text: string;
+  insights_text: string;
   original_box: [number, number, number, number]; // [ymin, xmin, ymax, xmax] max=1000
   match_box: [number, number, number, number];
 }
@@ -67,6 +67,9 @@ export async function compareInsights(originalImage: File, matchItem: MatchItem)
   formData.append("match_diagnosis", matchItem.diagnosis);
   if (matchItem.image_url) {
     formData.append("match_image_url", matchItem.image_url);
+  }
+  if (matchItem.raw_payload) {
+    formData.append("match_payload", JSON.stringify(matchItem.raw_payload));
   }
 
   const response = await fetch(`${API_BASE}/compare_insights`, {
