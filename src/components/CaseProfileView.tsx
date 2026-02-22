@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SelectionExplainPopover } from "@/components/SelectionExplainPopover";
 import type {
     AssessmentInfo,
     CardiomediastinalFindings,
@@ -526,9 +527,11 @@ export function CaseProfileView({ profile, className }: { profile: CaseProfile; 
     ];
 
     return (
-        <div className={cn("space-y-4", className)}>
-            {sections}
-        </div>
+        <SelectionExplainPopover>
+            <div data-sel-root className={cn("space-y-4", className)}>
+                {sections}
+            </div>
+        </SelectionExplainPopover>
     );
 }
 

@@ -556,6 +556,53 @@ async def chat_twin(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# /explain_selection  – MedGemma explains a highlighted phrase in context
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/explain_selection")
+async def explain_selection(
+    selected_text: str = Form(...),
+    context: str = Form(default=""),
+):
+    """
+    Given a short highlighted phrase and its surrounding context,
+    ask MedGemma to explain it in 1-2 plain-language clinical sentences.
+    """
+    context_snippet = context[:500].strip()
+    prompt = (
+        f"You are a concise medical education assistant. "
+        f"Explain the following medical term or phrase in exactly 1-2 sentences, "
+        f"suitable for a clinical audience. "
+        f"Phrase: \"{selected_text}\". "
+        f"Context: \"{context_snippet}\". "
+        f"Do NOT repeat the phrase back as a complete sentence. Start directly with the explanation."
+    )
+
+    dummy_img = Image.new("RGB", (336, 336), color=(0, 0, 0))
+    try:
+        import asyncio
+        resp = await asyncio.to_thread(query_medgemma, dummy_img, prompt=prompt, max_tokens=120)
+        explanation = ""
+        if isinstance(resp, list) and len(resp) > 0:
+            raw = resp[0].get("generated_text", "").strip()
+            # Strip echoed prompt if model returns it
+            for marker in ["Start directly with the explanation.", context_snippet, selected_text]:
+                if marker and raw.endswith(marker) is False and marker in raw:
+                    raw = raw.split(marker)[-1].strip()
+            # Keep only first 2 sentences
+            import re as _re
+            sentences = _re.split(r"(?<=[.!?])\s+", raw)
+            explanation = " ".join(sentences[:2]).strip()
+
+        if not explanation:
+            explanation = f'"{selected_text}" — a medical term relevant to this clinical case.'
+
+        return {"explanation": explanation}
+    except Exception as e:
+        print(f"MedGemma explain_selection error: {e}")
+        return {"explanation": f'"{selected_text}" — unable to reach the AI explanation engine right now.'}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # /extract  – mock CaseProfile extraction
 # When MedGemma becomes available, replace _extract_profile() body only.
 # ──────────────────────────────────────────────────────────────────────────────
