@@ -53,7 +53,7 @@ def health():
 async def search(
     file: UploadFile = File(...),
     profile: Optional[str] = Form(None),
-    limit: int = 5
+    limit: int = 10
 ):
     """
     Accept a chest X-ray image, generate a MedSiglip embedding,

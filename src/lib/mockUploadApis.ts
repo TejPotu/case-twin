@@ -21,7 +21,7 @@ export interface MatchItem {
 
 import type { CaseProfile } from "./caseProfileTypes";
 
-export async function searchByImage(file: File, profile?: CaseProfile, limit = 5): Promise<MatchItem[]> {
+export async function searchByImage(file: File, profile?: CaseProfile, limit = 10): Promise<MatchItem[]> {
   const formData = new FormData();
   formData.append("file", file);
   if (profile) {
