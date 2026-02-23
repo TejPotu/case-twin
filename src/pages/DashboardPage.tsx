@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useMemo, useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useDashboardStore } from "@/store/dashboardStore";
-import { Check, FileText, Loader2, MapPin, Settings2, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity, ChevronLeft, Building2, X } from "lucide-react";
+import { Check, FileText, Loader2, MapPin, Settings2, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity, ChevronLeft, Building2, X, Phone, ChevronRight } from "lucide-react";
 import { searchByImage, findHospitalsRoute } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
 import { type CaseProfile } from "@/lib/caseProfileTypes";
@@ -113,14 +113,16 @@ function SurfaceCard({
   children,
   label,
   title,
+  id,
 }: {
   className?: string;
   children: ReactNode;
   label?: string;
   title?: string;
+  id?: string;
 }) {
   return (
-    <section className={cn("mr-surface", className)}>
+    <section id={id} className={cn("mr-surface", className)}>
       {(label || title) && (
         <div className="mb-3">
           {label && <p className="mr-label">{label}</p>}
@@ -958,38 +960,87 @@ function CenterRow({ center, onClick, condensed }: { center: RouteCenter, onClic
     <div
       onClick={onClick}
       className={cn(
-        "flex min-h-16 flex-col gap-2 border-b border-[var(--mr-border)] px-4 py-3 text-[15px] leading-[22px] last:border-b-0 transition-colors",
-        !condensed && "lg:grid lg:grid-cols-[2fr_120px_90px_3fr] lg:items-center lg:gap-4",
-        onClick && "cursor-pointer hover:bg-zinc-50 active:bg-zinc-100"
+        "flex flex-col gap-2.5 border-b border-zinc-100 p-4 transition-all hover:bg-zinc-50/80 active:bg-zinc-100/50 cursor-pointer group last:border-0",
+        !condensed && "sm:grid sm:grid-cols-[1.5fr_1fr_1fr_2fr] sm:items-center sm:gap-4 sm:p-5"
       )}
     >
-      <div className={cn("flex flex-col", condensed && "gap-1")}>
-        <p className={cn("font-semibold text-[var(--mr-text)]", condensed && "line-clamp-2 leading-tight")}>{center.name}</p>
+      <div className={cn("flex flex-col", condensed ? "gap-1" : "gap-1.5")}>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className={cn("font-semibold text-zinc-900 group-hover:text-[var(--mr-action)] transition-colors", condensed ? "text-[14px] line-clamp-2 leading-tight" : "text-[15px]")}>
+            {center.name}
+          </h3>
+        </div>
         {condensed && (
-          <p className="text-sm text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
-            <MapPin className="w-3.5 h-3.5 mb-0.5" />
-            {center.travel}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 font-medium">
+            <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{center.travel}</span>
+            <span className="flex items-center gap-1"><Activity className="w-3.5 h-3.5" />{center.capability}</span>
+          </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--mr-text)] font-medium text-sm">{center.capability}</span>
-        <span className="h-1.5 w-16 rounded bg-[var(--mr-bg-subtle)] overflow-hidden">
-          <span className="block h-1.5 rounded bg-[var(--mr-action)]" style={{ width: center.capability }} />
-        </span>
-      </div>
-
       {!condensed && (
-        <p className="text-[var(--mr-text)] font-medium">{center.travel}</p>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-medium text-zinc-500 uppercase tracking-wider">Capability</span>
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-900 font-medium text-[14px]">{center.capability}</span>
+            <span className="h-1.5 w-12 rounded-full bg-zinc-100 overflow-hidden border border-zinc-200/50">
+              <span className="block h-full rounded-full bg-[var(--mr-action)] transition-all" style={{ width: center.capability }} />
+            </span>
+          </div>
+        </div>
       )}
 
       {!condensed && (
-        <p className="text-[var(--mr-text)] text-sm text-zinc-600 line-clamp-3 leading-relaxed">{center.reason}</p>
+        <div className="flex flex-col gap-1">
+          <span className="text-[12px] font-medium text-zinc-500 uppercase tracking-wider">Travel Match</span>
+          <p className="text-zinc-900 text-[14px] font-medium flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-zinc-400" />
+            {center.travel}
+          </p>
+        </div>
+      )}
+
+      {!condensed && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[12px] font-medium text-zinc-500 uppercase tracking-wider">AI Rationale</span>
+          <p className="text-zinc-600 text-[13px] line-clamp-2 leading-relaxed">{center.reason}</p>
+        </div>
       )}
     </div>
   );
 }
+
+const highlightKeywords = (text: string, condition: string | null = null, equipment: Record<string, boolean> = {}) => {
+  if (!text) return text;
+  const terms = [condition, ...Object.keys(equipment).filter(k => equipment[k])].filter(Boolean) as string[];
+  if (terms.length === 0) return text;
+
+  let wordsToHighlight: string[] = [];
+  terms.forEach(t => {
+    if (t.length > 3) {
+      wordsToHighlight.push(t);
+      if (t.includes(' ')) {
+        wordsToHighlight.push(...t.split(' ').filter(w => w.length > 3));
+      }
+    }
+  });
+
+  wordsToHighlight = Array.from(new Set(wordsToHighlight.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  const regex = new RegExp(`(${wordsToHighlight.join('|')})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <p className="text-[15px] leading-[24px] text-zinc-700">
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <span key={i} className="bg-yellow-200/80 text-yellow-900 px-1 rounded-[4px] font-medium border border-yellow-300/50 shadow-sm">{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </p>
+  );
+};
 
 function RouteScreen({
   equipment,
@@ -1007,6 +1058,7 @@ function RouteScreen({
   onLanguageChange,
   onHospitalClick,
   onUpdateSearch,
+  onProceedToMemo,
   userCoords
 }: {
   equipment: Record<string, boolean>;
@@ -1024,6 +1076,7 @@ function RouteScreen({
   onLanguageChange: (value: string) => void;
   onHospitalClick: (center: RouteCenter | null) => void;
   onUpdateSearch: () => void;
+  onProceedToMemo: () => void;
   userCoords: string | null;
 }) {
   const { extractedSpecialists, setExtractedSpecialists: setStoreSpecialists } = useDashboardStore();
@@ -1076,54 +1129,34 @@ function RouteScreen({
     ? [validCenters[0].lat, validCenters[0].lng]
     : [39.8283, -98.5795]; // Default to US center
 
-  // Highlight logic for keywords in reason text
-  const highlightKeywords = (text: string) => {
-    if (!text) return text;
-    const terms = [patientCondition, ...Object.keys(equipment).filter(k => equipment[k])].filter(Boolean);
-    if (terms.length === 0) return text;
-
-    let wordsToHighlight: string[] = [];
-    terms.forEach(t => {
-      if (t.length > 3) {
-        wordsToHighlight.push(t);
-        if (t.includes(' ')) {
-          wordsToHighlight.push(...t.split(' ').filter(w => w.length > 3));
-        }
-      }
-    });
-
-    wordsToHighlight = Array.from(new Set(wordsToHighlight.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
-    const regex = new RegExp(`(${wordsToHighlight.join('|')})`, 'gi');
-    const parts = text.split(regex);
-
-    return (
-      <p className="text-[15px] leading-[24px] text-zinc-700">
-        {parts.map((part, i) =>
-          regex.test(part) ? (
-            <span key={i} className="bg-yellow-200/80 text-yellow-900 px-1 rounded-[4px] font-medium border border-yellow-300/50 shadow-sm">{part}</span>
-          ) : (
-            <span key={i}>{part}</span>
-          )
-        )}
-      </p>
-    );
-  };
 
   return (
     <div className={cn(
       "flex h-[calc(100vh-140px)] gap-6 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
-      selectedHospital === null ? "flex-col lg:grid lg:grid-cols-[680px_416px]" : "flex-row"
+      selectedHospital === null ? "flex-col lg:flex-row" : "flex-col lg:flex-row"
     )}>
       {/* Left Container */}
       <div className={cn(
-        "flex flex-col gap-5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
+        "flex flex-col gap-6 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]",
         selectedHospital === null
-          ? "w-full opacity-100 h-full"
-          : "w-full max-w-[360px] xl:max-w-[420px] shrink-0 opacity-100 h-full"
+          ? "w-full lg:max-w-[720px] xl:max-w-[800px] shrink-0 opacity-100 h-full"
+          : "hidden lg:flex lg:max-w-[360px] xl:max-w-[420px] shrink-0 w-full opacity-100 h-full"
       )}>
+
+        {/* Header for List View */}
+        {selectedHospital === null && (
+          <div className="flex items-center justify-between shrink-0 mb-[-10px]">
+            <h1 className="text-[28px] font-semibold text-zinc-900 tracking-tight">
+              Routing Matches
+            </h1>
+            <span className="mr-badge mr-badge--neutral">Top {centers.length} Centers</span>
+          </div>
+        )}
+
+        {/* Map Preview */}
         <SurfaceCard className={cn(
-          "relative overflow-hidden p-0 border-zinc-200 z-0 transition-all duration-500 shrink-0",
-          selectedHospital === null ? "h-80" : "h-56"
+          "relative overflow-hidden p-0 border-zinc-200/80 shadow-sm z-0 transition-all duration-500 shrink-0",
+          selectedHospital === null ? "h-[240px] rounded-2xl" : "h-[200px] rounded-2xl"
         )}>
           <div className="absolute inset-0 z-0">
             <MapContainer
@@ -1140,10 +1173,12 @@ function RouteScreen({
                 center.lat !== undefined && center.lng !== undefined && (
                   <Marker key={idx} position={[center.lat, center.lng]} icon={defaultIcon}>
                     <Popup>
-                      <div className="text-sm">
-                        <strong>{center.name}</strong><br />
-                        Capability: {center.capability}<br />
-                        Travel: {center.travel}
+                      <div className="px-1 py-0.5">
+                        <strong className="block text-zinc-900 font-semibold text-[13px] mb-1">{center.name}</strong>
+                        <div className="text-[12px] text-zinc-600 space-y-0.5">
+                          <span className="block"><span className="font-medium text-zinc-500">Match:</span> {center.capability}</span>
+                          <span className="block"><span className="font-medium text-zinc-500">Distance:</span> {center.travel}</span>
+                        </div>
                       </div>
                     </Popup>
                   </Marker>
@@ -1151,37 +1186,43 @@ function RouteScreen({
               ))}
             </MapContainer>
           </div>
-          <span className="absolute bottom-3 left-3 z-[1000] rounded-full bg-white/90 backdrop-blur-md px-3 py-1 text-xs leading-4 text-[var(--mr-text-secondary)] shadow-sm border border-zinc-200">
-            Powered by You.com RAG API
-          </span>
         </SurfaceCard>
 
-        <SurfaceCard className="gap-0 p-0 flex-1 min-h-0 overflow-y-auto">
+        {/* Facility List */}
+        <SurfaceCard className={cn(
+          "gap-0 p-0 flex-1 min-h-0 overflow-y-auto border-zinc-200/80 shadow-sm",
+          selectedHospital === null ? "rounded-2xl" : "rounded-2xl bg-zinc-50/30"
+        )}>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-              <Loader2 className="h-6 w-6 animate-spin mb-3 text-[var(--mr-action)]" />
-              <p className="text-sm">Searching You.com for top-tier specialized centers...</p>
+            <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
+              <Loader2 className="h-8 w-8 animate-spin mb-4 text-[var(--mr-action)]" />
+              <p className="text-[15px] font-medium text-zinc-700">Analyzing specialized centers...</p>
+              <p className="text-[13px] text-zinc-500 mt-1">Matching capabilities to patient needs</p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-12 text-red-500 px-6 text-center">
-              <CloudOff className="h-6 w-6 mb-3" />
-              <p className="text-sm font-medium">Failed to load route centers</p>
-              <p className="text-xs mt-1 text-red-400">{error}</p>
+            <div className="flex flex-col items-center justify-center py-16 text-red-500 px-6 text-center">
+              <CloudOff className="h-8 w-8 mb-4 opacity-80" />
+              <p className="text-[15px] font-medium text-zinc-900">Routing Search Unavailable</p>
+              <p className="text-[13px] mt-1.5 text-zinc-500 max-w-sm">{error}</p>
+              <MedButton variant="secondary" size="sm" className="mt-4" onClick={onUpdateSearch}>Retry Search</MedButton>
             </div>
           ) : centers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-              <MapPin className="h-6 w-6 mb-3 opacity-50" />
-              <p className="text-sm">No centers found for this condition.</p>
+            <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
+              <Building2 className="h-10 w-10 mb-4 opacity-30" />
+              <p className="text-[15px] font-medium text-zinc-600">No matching centers found</p>
+              <p className="text-[13px] text-zinc-500 mt-1">Try adjusting your equipment or distance filters.</p>
             </div>
           ) : (
-            centers.map((center) => (
-              <CenterRow
-                key={center.name}
-                center={center}
-                onClick={() => onHospitalClick(selectedHospital?.name === center.name ? null : center)}
-                condensed={selectedHospital !== null}
-              />
-            ))
+            <div className="divide-y divide-zinc-100">
+              {centers.map((center) => (
+                <CenterRow
+                  key={center.name}
+                  center={center}
+                  onClick={() => onHospitalClick(selectedHospital?.name === center.name ? null : center)}
+                  condensed={selectedHospital !== null}
+                />
+              ))}
+            </div>
           )}
         </SurfaceCard>
       </div>
@@ -1189,215 +1230,219 @@ function RouteScreen({
       {/* Right Canvas / Filters Container */}
       {selectedHospital !== null ? (
         <div className="flex-1 rounded-2xl border border-zinc-200/80 bg-white shadow-sm flex flex-col overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-right-8 duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]">
-          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50/50 px-6 py-4 shrink-0">
+          <div className="flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-4 shrink-0">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => onHospitalClick(null)}
-                className="flex items-center justify-center h-8 w-8 rounded-full hover:bg-zinc-200/80 transition-colors text-zinc-500 hover:text-zinc-900"
+                className="flex items-center justify-center h-8 w-8 rounded-full hover:bg-zinc-100 transition-colors text-zinc-500 hover:text-zinc-900"
                 aria-label="Close hospital details"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <h2 className="text-[17px] font-semibold text-zinc-900">Hospital Details</h2>
+              <h2 className="text-[15px] font-semibold text-zinc-900">Routing Options</h2>
             </div>
             <div className="flex items-center gap-2">
-              <MedButton variant="primary" size="sm">
-                Route to facility
+              <MedButton variant="primary" size="sm" onClick={onProceedToMemo}>
+                Prepare Memo
               </MedButton>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto bg-zinc-50/30 p-6 md:p-8">
-            <div className="max-w-[800px] mx-auto space-y-6">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 shadow-sm">
-                    <Building2 className="w-5 h-5" />
+          <div className="flex-1 overflow-y-auto bg-white p-6 md:p-8">
+            <div className="max-w-[800px] mx-auto space-y-8">
+              <div className="space-y-4">
+                <div className="space-y-1.5 flex flex-col items-start">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--mr-action)]/10 text-[var(--mr-action)] text-[12px] font-semibold tracking-wide uppercase mb-1">
+                    <Building2 className="w-3.5 h-3.5" /> Facility Details
                   </div>
-                  <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Facility Match Info</span>
-                    <h3 className="text-[24px] font-semibold tracking-[-0.01em] text-zinc-900 leading-tight">{selectedHospital.name}</h3>
-                  </div>
+                  <h3 className="text-[24px] md:text-[28px] font-semibold tracking-[-0.01em] text-zinc-900 leading-tight">{selectedHospital.name}</h3>
                 </div>
-                <div className="flex items-center gap-4 mt-3">
-                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200/80">
+
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-50 px-3 py-1 rounded-full border border-zinc-200/80">
                     <MapPin className="w-4 h-4 text-zinc-400" /> Approx Travel Time: {selectedHospital.travel}
                   </span>
-                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200/80">
+                  <span className="flex items-center gap-1.5 text-[14px] text-zinc-600 font-medium bg-zinc-50 px-3 py-1 rounded-full border border-zinc-200/80">
                     <Activity className="w-4 h-4 text-zinc-400" /> Capability: {selectedHospital.capability}
                   </span>
                 </div>
               </div>
 
-              <div className="w-full h-px bg-zinc-200/60 my-4" />
+              <div className="w-full h-px bg-zinc-100" />
 
-              <div className="space-y-3">
-                <h4 className="text-[16px] flex items-center gap-2 font-semibold text-zinc-900">
-                  <Activity className="w-5 h-5 text-blue-500" /> AI Selection Rationale
+              <section className="space-y-3">
+                <h4 className="text-[13px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                  <Activity className="w-4 h-4" /> Selection Rationale
                 </h4>
-                <div className="bg-blue-50/50 border border-blue-100/60 rounded-xl p-5 shadow-sm text-zinc-800">
-                  {highlightKeywords(selectedHospital.reason)}
+                <div className="flex flex-col gap-2 relative pl-4 before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:bg-indigo-500 before:rounded-full">
+                  <p className="text-[15px] leading-relaxed text-zinc-800">
+                    {highlightKeywords(selectedHospital.reason, patientCondition, equipment)}
+                  </p>
                 </div>
-              </div>
+              </section>
 
-              <div className="w-full h-px bg-zinc-200/60 my-6" />
+              <div className="w-full h-px bg-zinc-100" />
 
-              <div className="space-y-3 pb-8">
-                <h4 className="text-[16px] flex items-center gap-2 font-semibold text-zinc-900">
-                  <Stethoscope className="w-5 h-5 text-blue-500" /> Top Specialists & Programs
+              <section className="space-y-4 pb-8">
+                <h4 className="text-[13px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                  <Stethoscope className="w-4 h-4" /> Top Specialists & Programs
                 </h4>
-                <div className="bg-white border border-zinc-200/80 rounded-xl p-5 shadow-sm text-zinc-800">
+
+                <div className="grid gap-4">
                   {isExtractingSpecialists && (!extractedSpecialists[selectedHospital.name] || extractedSpecialists[selectedHospital.name].length === 0) ? (
-                    <div className="flex flex-col items-center justify-center py-6 text-zinc-500">
-                      <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-3" />
-                      <p className="text-sm">MedRoute AI is reading {selectedHospital.name}'s website...</p>
+                    <div className="flex items-center gap-3 py-4 text-zinc-500">
+                      <Loader2 className="w-5 h-5 animate-spin text-[var(--mr-action)]" />
+                      <p className="text-[14px] font-medium">Reading facility directory...</p>
                     </div>
                   ) : extractedSpecialists[selectedHospital.name] && extractedSpecialists[selectedHospital.name].length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="grid gap-3">
                       {extractedSpecialists[selectedHospital.name].map((specialist, idx) => (
-                        <div key={idx} className="flex flex-col gap-1 border-b border-zinc-100 last:border-0 pb-3 last:pb-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-semibold text-[15px]">{specialist.name}</span>
+                        <div key={idx} className="p-4 rounded-xl border border-zinc-200/60 bg-zinc-50/50 hover:bg-zinc-50 hover:border-zinc-300/60 transition-colors">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <span className="block font-semibold text-[15px] text-zinc-900">{specialist.name}</span>
+                              <span className="text-[13px] text-zinc-500 font-medium">{specialist.specialty}</span>
+                            </div>
                             {specialist.url && (
                               <a
                                 href={specialist.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[13px] text-blue-600 hover:text-blue-700 underline decoration-1 underline-offset-2 transition-colors flex-shrink-0"
+                                className="inline-flex items-center justify-center p-1.5 rounded-md hover:bg-zinc-200/60 text-zinc-400 hover:text-zinc-700 transition-colors"
+                                aria-label="View Profile"
                               >
-                                View Profile →
+                                <ChevronRight className="w-4 h-4" />
                               </a>
                             )}
                           </div>
-                          <span className="text-[13px] text-[var(--mr-action)] font-medium tracking-tight bg-blue-50/50 self-start px-2 py-0.5 rounded-md border border-blue-100">{specialist.specialty}</span>
-                          <p className="text-[14px] text-zinc-600 mt-1 leading-snug">{specialist.context}</p>
+                          <p className="text-[14px] text-zinc-700 leading-relaxed mb-3">{specialist.context}</p>
                           {specialist.phone && (
-                            <a href={`tel:${specialist.phone}`} className="text-[13px] text-zinc-500 hover:text-zinc-700 mt-0.5">
-                              📞 {specialist.phone}
+                            <a href={`tel:${specialist.phone}`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--mr-action)] hover:text-blue-700">
+                              <Phone className="w-3.5 h-3.5" /> {specialist.phone}
                             </a>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-3 py-2">
-                      <div className="flex items-start gap-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
-                        <Building2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <h5 className="font-semibold text-[14px] text-zinc-800 mb-1">{selectedHospital.name}</h5>
-                          <p className="text-[13px] text-zinc-600 leading-relaxed mb-2">
-                            We couldn't automatically find specific physician profiles for {patientCondition} at this facility.
-                            However, {selectedHospital.name} is a highly capable medical center for your condition.
-                          </p>
-                          <div className="space-y-2 mt-3">
-                            <p className="text-[13px] text-zinc-700">
-                              <span className="font-medium">Next steps:</span>
-                            </p>
-                            <ul className="text-[13px] text-zinc-600 space-y-1.5 ml-4 list-disc">
-                              <li>Contact the hospital's main line to request a specialist referral</li>
-                              <li>Ask specifically for the {patientCondition} department or related specialty</li>
-                              <li>Request an appointment with a board-certified specialist</li>
-                            </ul>
-                          </div>
-                          {selectedHospital.url && (
-                            <a
-                              href={selectedHospital.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 mt-3 text-[13px] text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                            >
-                              Visit Hospital Website →
-                            </a>
-                          )}
+                    <div className="flex items-start gap-4 p-4 rounded-xl border border-zinc-200/60 bg-zinc-50/50">
+                      <div className="flex h-8 w-8 items-center justify-center shrink-0 rounded-lg bg-white border border-zinc-200 shadow-sm text-zinc-400">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <h5 className="font-semibold text-[14px] text-zinc-900 mb-1">{selectedHospital.name}</h5>
+                        <p className="text-[14px] text-zinc-600 leading-relaxed mb-3">
+                          We couldn't automatically find specific physician profiles for {patientCondition} at this facility.
+                          However, {selectedHospital.name} is a highly capable medical center for your condition.
+                        </p>
+                        <div className="space-y-1.5 mt-4">
+                          <p className="text-[13px] font-semibold text-zinc-900 uppercase tracking-wide">Next steps</p>
+                          <ul className="text-[14px] text-zinc-600 space-y-1.5 ml-5 list-disc">
+                            <li>Contact the hospital's main line to request a specialist referral</li>
+                            <li>Ask specifically for the {patientCondition} department or related specialty</li>
+                            <li>Request an appointment with a board-certified specialist</li>
+                          </ul>
                         </div>
+                        {selectedHospital.url && (
+                          <a
+                            href={selectedHospital.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-4 text-[13px] font-medium text-[var(--mr-action)] hover:text-blue-700 transition-colors"
+                          >
+                            Visit Hospital Website <ChevronRight className="w-3 h-3" />
+                          </a>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
+              </section>
             </div>
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          <SurfaceCard>
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Filters</h2>
+        <div className="flex-none w-full lg:w-[320px] xl:w-[360px] animate-in fade-in slide-in-from-right-8 duration-500 delay-100 mb-8 lg:mb-0">
+          <SurfaceCard className="rounded-2xl border-zinc-200/80 shadow-sm sticky top-0">
+            <div className="flex items-center gap-2 mb-2 pb-3 border-b border-zinc-100">
+              <Settings2 className="w-5 h-5 text-zinc-500" />
+              <h2 className="text-[16px] font-semibold text-zinc-900">Routing Criteria</h2>
+            </div>
 
-            <div className="space-y-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Required equipment</p>
-              <div className="space-y-2">
-                {Object.entries(equipment).map(([name, checked]) => (
-                  <LabeledCheckbox
-                    key={name}
-                    checked={checked}
-                    label={name}
-                    onChange={(next) => onEquipmentToggle(name, next)}
+            <div className="space-y-6 pt-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-medium text-zinc-900">Facility Capabilities</p>
+                </div>
+                <div className="space-y-2.5 bg-zinc-50/50 p-3.5 rounded-xl border border-zinc-100">
+                  {Object.entries(equipment).map(([name, checked]) => (
+                    <LabeledCheckbox
+                      key={name}
+                      checked={checked}
+                      label={name}
+                      onChange={(next) => onEquipmentToggle(name, next)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-medium text-zinc-900">Maximum Travel Time</p>
+                  <span className="text-[12px] font-semibold bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded-md">{maxTravelTime}h</span>
+                </div>
+                <div className="px-1">
+                  <input
+                    type="range"
+                    min={0}
+                    max={6}
+                    step={0.5}
+                    className="mr-slider"
+                    value={maxTravelTime}
+                    onChange={(event) => onMaxTravelTimeChange(Number(event.target.value))}
                   />
-                ))}
+                  <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400 mt-2">
+                    <span>0h</span>
+                    <span>3h</span>
+                    <span>6h</span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="mr-divider" />
-
-            <div className="space-y-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Max travel time</p>
-              <input
-                type="range"
-                min={0}
-                max={6}
-                step={0.5}
-                className="mr-slider"
-                value={maxTravelTime}
-                onChange={(event) => onMaxTravelTimeChange(Number(event.target.value))}
-              />
-              <div className="flex items-center justify-between text-xs leading-4 text-[var(--mr-text-secondary)]">
-                <span>0h</span>
-                <span>6h</span>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-medium text-zinc-900">Search Radius</p>
+                </div>
+                <select
+                  className="mr-select h-10 text-[14px] leading-5 bg-zinc-50 border-zinc-200 hover:border-zinc-300 transition-colors"
+                  value={maxDistance}
+                  onChange={(e) => onMaxDistanceChange(e.target.value)}
+                >
+                  <option value="10">Within 10 miles</option>
+                  <option value="25">Within 25 miles</option>
+                  <option value="50">Within 50 miles</option>
+                  <option value="100">Within 100 miles</option>
+                  <option value="250">Within 250 miles</option>
+                  <option value="500">Within 500 miles</option>
+                </select>
               </div>
-            </div>
 
-            <div className="mr-divider" />
-
-            <div className="space-y-2">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Max distance</p>
-              <select
-                className="mr-select h-9 text-[14px] leading-5"
-                value={maxDistance}
-                onChange={(e) => onMaxDistanceChange(e.target.value)}
-              >
-                <option value="10">10 miles</option>
-                <option value="25">25 miles</option>
-                <option value="50">50 miles</option>
-                <option value="100">100 miles</option>
-                <option value="250">250 miles</option>
-              </select>
-            </div>
-
-            <div className="mr-divider" />
-
-            <div className="space-y-1">
-              <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Language preference</p>
-              <select
-                className="mr-select h-9 text-[14px] leading-5"
-                value={language}
-                onChange={(event) => onLanguageChange(event.target.value)}
-              >
-                <option>English</option>
-              </select>
-            </div>
-
-            <div className="pt-4 mt-2">
-              <MedButton
-                variant="primary"
-                fullWidth
-                onClick={onUpdateSearch}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Updating...
-                  </>
-                ) : "Update results"}
-              </MedButton>
+              <div className="pt-2">
+                <button
+                  className="w-full flex items-center justify-center gap-2 h-11 rounded-xl bg-zinc-900 text-white font-medium text-[14px] hover:bg-zinc-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  onClick={onUpdateSearch}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Routes...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-4 h-4" /> Update Facility Matches
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </SurfaceCard>
         </div>
@@ -1406,88 +1451,213 @@ function RouteScreen({
   );
 }
 
-function MemoScreen() {
+interface MemoScreenProps {
+  selectedMatch: MatchItem | null;
+  selectedHospital: RouteCenter | null;
+  requiredEquipment: Record<string, boolean>;
+}
+
+function MemoScreen({ selectedMatch, selectedHospital, requiredEquipment }: MemoScreenProps) {
+  const profile = useDashboardStore(s => s.profile);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Derived Patient Context
+  const diagnosis = profile?.assessment?.diagnosis_primary || selectedMatch?.diagnosis || "Suspected acute condition";
+  const primaryFinding = profile?.findings?.lungs?.consolidation_present === "yes" ? "consolidation" : "opacity";
+  const age = profile?.patient?.age_years || "Adult";
+  const gender = profile?.patient?.sex || "patient";
+  const synthesis = profile?.assessment?.clinical_synthesis || "Patient requires transfer for higher level of care and specialized management.";
+
+  // Derived Routing Context
+  const targetFacilityName = selectedHospital?.name || "Specialized Care Center";
+  const targetRationale = selectedHospital?.reason || "Identified high clinical concordance with outcomes from specialized care centers. Automated routing suggests facility with capable unit.";
+  const travelTime = selectedHospital?.travel || "TBD";
+
+  const activeEquipment = Object.entries(requiredEquipment)
+    .filter(([_, isActive]) => isActive)
+    .map(([name]) => name);
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[680px_416px]">
-      <div className="space-y-4">
-        <SurfaceCard className="gap-4 p-8">
-          <div className="space-y-1">
-            <h1 className="text-[28px] font-semibold leading-[34px] tracking-[-0.01em] text-[var(--mr-text)]">
-              Transfer Memo
-            </h1>
-            <p className="text-xs leading-4 text-[var(--mr-text-secondary)]">Generated by MedRoute AI</p>
+    <div className="flex flex-col lg:flex-row gap-6 max-w-[1200px] mx-auto h-[calc(100vh-140px)] print:h-auto print:block print:max-w-none print:m-0 print:p-0">
+      {/* Main Memo Content */}
+      <div className="flex-1 w-full max-w-[800px] h-full overflow-y-auto pr-2 pb-8 custom-scrollbar print:max-w-none print:overflow-visible print:p-0">
+        <SurfaceCard id="memo-content" className="gap-6 p-8 md:p-10 rounded-2xl shadow-sm border-zinc-200/80 bg-white print:border-none print:shadow-none print:p-0">
+          <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-zinc-100 pb-6 gap-4 md:gap-0">
+            <div className="space-y-1.5 flex flex-col items-start">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--mr-action)]/10 text-[var(--mr-action)] text-[12px] font-semibold tracking-wide uppercase mb-1">
+                <FileText className="w-3.5 h-3.5" /> Clinical Summary Memo
+              </div>
+              <h1 className="text-[28px] md:text-[32px] font-semibold leading-tight tracking-tight text-zinc-900">
+                Interfacility Transfer Protocol
+              </h1>
+              <p className="text-[14px] text-zinc-500 font-medium">Auto-generated by MedRoute AI System</p>
+            </div>
+            <div className="mt-4 md:mt-0 text-left md:text-right">
+              <p className="text-[13px] font-semibold text-zinc-900">Date: {new Date().toLocaleDateString()}</p>
+              <p className="text-[13px] text-zinc-500 mt-1">Status: <span className="text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-sm border border-amber-100">Draft - Requires Attending Review</span></p>
+            </div>
           </div>
 
-          <div className="mr-divider" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-zinc-100">
+            {/* Reason for transfer */}
+            <section className="space-y-2">
+              <h2 className="text-[12px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5" /> Indication for Transfer
+              </h2>
+              <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100 text-[14px] leading-relaxed text-zinc-800 font-medium h-[calc(100%-24px)] flex flex-col justify-center">
+                Need for higher-acuity diagnostic workup and specialized management of {diagnosis.toLowerCase()}, requiring facilities beyond current institutional capabilities.
+              </div>
+            </section>
 
-          <section className="space-y-1">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Reason for transfer</h2>
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-              Higher-acuity diagnostic workup and definitive management of a suspected right hilar
-              lung malignancy.
-            </p>
-          </section>
+            {/* Case Summary */}
+            <section className="space-y-2">
+              <h2 className="text-[12px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <Stethoscope className="w-3.5 h-3.5" /> Clinical Presentation
+              </h2>
+              <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/60 text-[14px] leading-relaxed text-zinc-700 h-[calc(100%-24px)]">
+                {age}-year-old {gender} arriving for evaluation. {synthesis} See attached structured profile for full history.
+              </div>
+            </section>
+          </div>
 
-          <section className="space-y-1">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Case summary</h2>
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-              52-year-old presenting with hemoptysis and unintentional weight loss. CT chest
-              reveals a right hilar mass with mediastinal lymphadenopathy. No prior history of
-              malignancy.
-            </p>
-          </section>
+          {/* Matched Precedent */}
+          {selectedMatch && (
+            <section className="space-y-3 pb-6 border-b border-zinc-100">
+              <h2 className="text-[12px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <HeartPulse className="w-3.5 h-3.5" /> Matching Case Precedent
+              </h2>
+              <div className="flex flex-col gap-2 relative pl-4 before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:bg-rose-400 before:rounded-full">
+                <p className="text-[14px] font-semibold text-zinc-900">
+                  Case Context: {selectedMatch.diagnosis} <span className="text-zinc-500 font-normal">({Math.round((selectedMatch.score || 0) * 100)}% visual match)</span>
+                </p>
+                <p className="text-[14px] leading-relaxed text-zinc-700">
+                  {selectedMatch.outcome} This established precedent informs the current transfer protocol and required level of care.
+                </p>
+              </div>
+            </section>
+          )}
 
-          <section className="space-y-1">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Matched precedent</h2>
-            <p className="text-[15px] leading-[22px] text-[var(--mr-text)]">
-              94% clinical similarity to a 2024 case at Mayo Clinic — Rochester resulting in
-              complete response after concurrent chemoradiation therapy.
-            </p>
-          </section>
-
-          <section className="space-y-1">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">
-              Recommended next steps
+          {/* Target Facility Match */}
+          <section className="space-y-3 pb-6 border-b border-zinc-100">
+            <h2 className="text-[12px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5" /> Target Facility Match
             </h2>
-            <ol className="list-decimal space-y-1 pl-5 text-[15px] leading-[22px] text-[var(--mr-text)]">
-              <li>Bronchoscopy with endobronchial biopsy</li>
-              <li>Staging PET-CT scan</li>
-              <li>Thoracic oncology consultation</li>
-              <li>Multidisciplinary tumor board review</li>
-            </ol>
+            <div className="flex flex-col gap-3 relative pl-4 before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:bg-indigo-500 before:rounded-full">
+              <div className="flex items-center justify-between">
+                <p className="text-[15px] font-bold text-zinc-900">{targetFacilityName}</p>
+                <span className="text-[12px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                  {travelTime} Travel Time
+                </span>
+              </div>
+              <p className="text-[14px] leading-relaxed text-zinc-700">
+                {highlightKeywords(targetRationale, diagnosis, requiredEquipment)}
+              </p>
+
+              {activeEquipment.length > 0 && (
+                <div className="pt-2">
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Required Capabilities</p>
+                  <div className="flex flex-wrap gap-2">
+                    {activeEquipment.map(eq => (
+                      <span key={eq} className="text-[12px] font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200">
+                        {eq}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
 
-          <section className="space-y-2">
-            <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Attachments</h2>
-            <div className="flex items-center gap-2 text-[15px] leading-[22px] text-[var(--mr-text)]">
-              <FileText className="h-4 w-4 text-[var(--mr-text-secondary)]" />
-              <span>CT_Chest_Scan_001.dcm — Original imaging</span>
-            </div>
-            <div className="flex items-center gap-2 text-[15px] leading-[22px] text-[var(--mr-text)]">
-              <FileText className="h-4 w-4 text-[var(--mr-text-secondary)]" />
-              <span>FHIR_Bundle.json — Structured clinical data</span>
-            </div>
+          <section className="space-y-3">
+            <h2 className="text-[12px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> Recommended Trajectory
+            </h2>
+            <ul className="grid sm:grid-cols-2 gap-3 mt-2">
+              {[
+                "Specialist consultation (e.g. Pulmonology)",
+                "Advanced imaging protocol (CT/MRI)",
+                "Multidisciplinary review",
+                "Establishment of baseline functional status"
+              ].map((step, i) => (
+                <li key={i} className="flex gap-3 p-3 rounded-lg border border-zinc-100 hover:border-zinc-200 transition-colors bg-white shadow-sm">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-bold text-zinc-600 border border-zinc-200">
+                    {i + 1}
+                  </div>
+                  <span className="text-[14px] text-zinc-700 mt-0.5">{step}</span>
+                </li>
+              ))}
+            </ul>
           </section>
+
         </SurfaceCard>
       </div>
 
-      <div className="space-y-4">
-        <SurfaceCard>
-          <h2 className="text-[17px] font-semibold leading-[22px] text-[var(--mr-text)]">Export</h2>
-          <MedButton variant="primary" fullWidth>
-            Download PDF
-          </MedButton>
-          <MedButton variant="secondary" fullWidth>
-            Copy text
-          </MedButton>
-          <MedButton variant="secondary" fullWidth>
-            Generate in another language
-          </MedButton>
-        </SurfaceCard>
+      {/* Sidebar Actions */}
+      <div className="w-full lg:w-[320px] xl:w-[360px] flex-shrink-0 animate-in fade-in slide-in-from-right-8 duration-500 print:hidden">
+        <div className="sticky top-0 space-y-4">
+          {/* Attachment Box */}
+          <SurfaceCard className="rounded-xl border-zinc-200/80 shadow-sm p-5 space-y-4 bg-zinc-50/50">
+            <h2 className="text-[14px] font-semibold text-zinc-900 flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-zinc-500" /> Attached Artifacts
+            </h2>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-zinc-200/60 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex items-center gap-2.5 overflow-hidden">
+                  <div className="p-1.5 rounded-md bg-blue-50 text-blue-600"><FileText className="h-4 w-4" /></div>
+                  <span className="text-[13px] font-medium text-zinc-700 truncate">Extracted_Profile.json</span>
+                </div>
+                <Check className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-zinc-200/60 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex items-center gap-2.5 overflow-hidden">
+                  <div className="p-1.5 rounded-md bg-purple-50 text-purple-600"><Scan className="h-4 w-4" /></div>
+                  <span className="text-[13px] font-medium text-zinc-700 truncate">Source_Imaging_Record.cxr</span>
+                </div>
+                <Check className="w-4 h-4 text-emerald-500" />
+              </div>
+            </div>
+          </SurfaceCard>
 
-        <p className="pt-1 text-xs leading-4 text-[var(--mr-text-secondary)]">
-          Decision support only. Final clinical decisions remain with the care team.
-        </p>
+          {/* Export Actions */}
+          <SurfaceCard className="rounded-xl border-zinc-200/80 shadow-sm p-5 bg-white">
+            <h2 className="text-[14px] font-semibold text-zinc-900 mb-2">Export Protocol</h2>
+            <div className="space-y-2.5 mt-2">
+              <button
+                onClick={() => window.print()}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-zinc-900 text-white font-medium text-[13px] hover:bg-zinc-800 transition-colors"
+              >
+                Download PDF Report
+              </button>
+              <button
+                onClick={() => {
+                  const memoText = document.getElementById('memo-content');
+                  if (memoText) {
+                    navigator.clipboard.writeText(memoText.innerText);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-white border border-zinc-200 text-zinc-700 font-medium text-[13px] hover:bg-zinc-50 transition-colors"
+              >
+                {isCopied ? "Copied!" : "Copy to Clipboard"}
+              </button>
+              <button
+                onClick={() => alert("Translation service initiated... This feature requires backend integration.")}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-white border border-zinc-200 text-zinc-700 font-medium text-[13px] hover:bg-zinc-50 transition-colors"
+              >
+                Translate Document
+              </button>
+            </div>
+          </SurfaceCard>
+
+          {/* Disclaimer */}
+          <div className="px-2 text-center">
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              <span className="font-semibold text-zinc-500">Clinical Decision Support Only.</span><br />
+              Final determination of care trajectory remains with the reviewing physician.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1592,8 +1762,8 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)]">
-      <header className="fixed left-0 right-0 top-0 z-40 border-b border-zinc-200/80 bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+    <div className="h-screen overflow-hidden bg-[var(--mr-page)] text-[var(--mr-text)] print:h-auto print:overflow-visible print:bg-white">
+      <header className="fixed left-0 right-0 top-0 z-40 border-b border-zinc-200/80 bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 print:hidden">
         <div className="mr-container flex h-16 items-center justify-between gap-4 py-3">
 
           <div className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-opacity">
@@ -1607,7 +1777,7 @@ export function DashboardPage() {
             <Stepper step={step} onStepChange={handleStepChange} />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="hidden lg:flex items-center gap-4">
             <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50">
               <FolderOpen className="w-3.5 h-3.5" strokeWidth={2.5} /> My Cases
             </button>
@@ -1628,7 +1798,7 @@ export function DashboardPage() {
       </header>
 
       <main
-        className={cn("mr-container h-full pb-6 pt-24", step === 0 ? "overflow-hidden" : "overflow-auto")}
+        className={cn("mr-container h-full pb-6 pt-24", step === 0 ? "overflow-hidden" : "overflow-auto", "print:p-0 print:m-0 print:overflow-visible print:block print:h-auto")}
       >
         {step === 0 ? (
           <UploadScreen
@@ -1691,11 +1861,18 @@ export function DashboardPage() {
             onLanguageChange={setLanguage}
             onHospitalClick={setSelectedHospital}
             onUpdateSearch={fetchRoute}
+            onProceedToMemo={() => setStep(3)}
             userCoords={userCoords}
           />
         ) : null}
 
-        {step === 3 ? <MemoScreen /> : null}
+        {step === 3 ? (
+          <MemoScreen
+            selectedMatch={selectedMatch !== null ? matchResults[selectedMatch] : null}
+            selectedHospital={selectedHospital}
+            requiredEquipment={equipment}
+          />
+        ) : null}
       </main>
 
     </div>
