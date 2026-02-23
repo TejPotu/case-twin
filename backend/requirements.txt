@@ -11,3 +11,8 @@ huggingface_hub
 google-cloud-storage
 httpx
 geopy
+crewai
+crewai-tools
+litellm
+google-generativeai
+langsmith

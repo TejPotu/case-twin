@@ -49,6 +49,7 @@ interface MatchItem {
 }
 interface RouteCenter {
   name: string;
+  url?: string;
   capability: string;
   travel: string;
   reason: string;
@@ -1005,7 +1006,8 @@ function RouteScreen({
   onMaxDistanceChange,
   onLanguageChange,
   onHospitalClick,
-  onUpdateSearch
+  onUpdateSearch,
+  userCoords
 }: {
   equipment: Record<string, boolean>;
   maxTravelTime: number;
@@ -1022,7 +1024,52 @@ function RouteScreen({
   onLanguageChange: (value: string) => void;
   onHospitalClick: (center: RouteCenter | null) => void;
   onUpdateSearch: () => void;
+  userCoords: string | null;
 }) {
+  const { extractedSpecialists, setExtractedSpecialists: setStoreSpecialists } = useDashboardStore();
+  const [isExtractingSpecialists, setIsExtractingSpecialists] = useState(false);
+
+  useEffect(() => {
+    if (!selectedHospital) return;
+    const name = selectedHospital.name;
+    const url = selectedHospital.url || "";
+
+    // If we already have specialists cached in the store, don't re-fetch
+    if (extractedSpecialists[name]) return;
+
+    setIsExtractingSpecialists(true);
+    console.log(`[SpecialistAgent] Starting research for ${name} (${url}) with diagnosis: ${patientCondition}`);
+
+    const formData = new FormData();
+    formData.append("url", url);
+    formData.append("diagnosis", patientCondition);
+    formData.append("hospital_name", name);
+    // Use userCoords if available for more accurate search
+    if (userCoords) {
+      formData.append("location", userCoords);
+    }
+
+    fetch("http://localhost:8000/analyze_hospital_page", {
+      method: "POST",
+      body: formData,
+    })
+      .then((res) => {
+        console.log(`[SpecialistAgent] Response status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        console.log(`[SpecialistAgent] Extracted specialists for ${name}:`, data.specialists);
+        setStoreSpecialists(name, data.specialists || []);
+      })
+      .catch((err) => {
+        console.error(`[SpecialistAgent] Failed to extract specialists for ${name}:`, err);
+        setStoreSpecialists(name, []);
+      })
+      .finally(() => {
+        setIsExtractingSpecialists(false);
+      });
+  }, [selectedHospital, patientCondition, extractedSpecialists, userCoords, setStoreSpecialists]);
+
   const safeCenters = Array.isArray(centers) ? centers : [];
   const validCenters = safeCenters.filter(c => typeof c.lat === "number" && typeof c.lng === "number");
   const mapCenter: [number, number] = validCenters.length > 0 && validCenters[0].lat !== undefined && validCenters[0].lng !== undefined
@@ -1189,6 +1236,82 @@ function RouteScreen({
                 </h4>
                 <div className="bg-blue-50/50 border border-blue-100/60 rounded-xl p-5 shadow-sm text-zinc-800">
                   {highlightKeywords(selectedHospital.reason)}
+                </div>
+              </div>
+
+              <div className="w-full h-px bg-zinc-200/60 my-6" />
+
+              <div className="space-y-3 pb-8">
+                <h4 className="text-[16px] flex items-center gap-2 font-semibold text-zinc-900">
+                  <Stethoscope className="w-5 h-5 text-blue-500" /> Top Specialists & Programs
+                </h4>
+                <div className="bg-white border border-zinc-200/80 rounded-xl p-5 shadow-sm text-zinc-800">
+                  {isExtractingSpecialists && (!extractedSpecialists[selectedHospital.name] || extractedSpecialists[selectedHospital.name].length === 0) ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-zinc-500">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-500 mb-3" />
+                      <p className="text-sm">MedRoute AI is reading {selectedHospital.name}'s website...</p>
+                    </div>
+                  ) : extractedSpecialists[selectedHospital.name] && extractedSpecialists[selectedHospital.name].length > 0 ? (
+                    <div className="space-y-4">
+                      {extractedSpecialists[selectedHospital.name].map((specialist, idx) => (
+                        <div key={idx} className="flex flex-col gap-1 border-b border-zinc-100 last:border-0 pb-3 last:pb-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-semibold text-[15px]">{specialist.name}</span>
+                            {specialist.url && (
+                              <a
+                                href={specialist.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[13px] text-blue-600 hover:text-blue-700 underline decoration-1 underline-offset-2 transition-colors flex-shrink-0"
+                              >
+                                View Profile →
+                              </a>
+                            )}
+                          </div>
+                          <span className="text-[13px] text-[var(--mr-action)] font-medium tracking-tight bg-blue-50/50 self-start px-2 py-0.5 rounded-md border border-blue-100">{specialist.specialty}</span>
+                          <p className="text-[14px] text-zinc-600 mt-1 leading-snug">{specialist.context}</p>
+                          {specialist.phone && (
+                            <a href={`tel:${specialist.phone}`} className="text-[13px] text-zinc-500 hover:text-zinc-700 mt-0.5">
+                              📞 {specialist.phone}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 py-2">
+                      <div className="flex items-start gap-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                        <Building2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-[14px] text-zinc-800 mb-1">{selectedHospital.name}</h5>
+                          <p className="text-[13px] text-zinc-600 leading-relaxed mb-2">
+                            We couldn't automatically find specific physician profiles for {patientCondition} at this facility.
+                            However, {selectedHospital.name} is a highly capable medical center for your condition.
+                          </p>
+                          <div className="space-y-2 mt-3">
+                            <p className="text-[13px] text-zinc-700">
+                              <span className="font-medium">Next steps:</span>
+                            </p>
+                            <ul className="text-[13px] text-zinc-600 space-y-1.5 ml-4 list-disc">
+                              <li>Contact the hospital's main line to request a specialist referral</li>
+                              <li>Ask specifically for the {patientCondition} department or related specialty</li>
+                              <li>Request an appointment with a board-certified specialist</li>
+                            </ul>
+                          </div>
+                          {selectedHospital.url && (
+                            <a
+                              href={selectedHospital.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 mt-3 text-[13px] text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                            >
+                              Visit Hospital Website →
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1393,6 +1516,7 @@ export function DashboardPage() {
   const [isRouting, setIsRouting] = useState(false);
   const [routingError, setRoutingError] = useState<string | null>(null);
   const [selectedHospital, setSelectedHospital] = useState<RouteCenter | null>(null);
+  const [userCoords, setUserCoords] = useState<string | null>(null);
 
   const fetchRoute = async () => {
     setSelectedHospital(null); // Clear selection on new search to show filters/map
@@ -1401,28 +1525,29 @@ export function DashboardPage() {
     setRoutingError(null);
 
     // Try to get user location
-    let userLocation = "New York, NY"; // Fallback
-    try {
-      if ("geolocation" in navigator) {
-        userLocation = await new Promise((resolve) => {
+    let searchLocation = userCoords || "New York, NY";
+
+    if (!userCoords && "geolocation" in navigator) {
+      try {
+        const coords = await new Promise<string>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(
             (pos) => resolve(`${pos.coords.latitude}, ${pos.coords.longitude}`),
-            (err) => {
-              console.warn("Geolocation denied or failed, falling back to default.", err);
-              resolve("New York, NY");
-            },
-            { timeout: 5000 }
+            (err) => reject(err),
+            { timeout: 30000, enableHighAccuracy: true }
           );
         });
+        searchLocation = coords;
+        setUserCoords(coords);
+      } catch (e) {
+        console.warn("Geolocation failed or timed out, using fallback NYC.", e);
+        searchLocation = "New York, NY";
       }
-    } catch (e) {
-      console.warn("Geolocation failed.", e);
     }
 
     try {
       const results = await findHospitalsRoute(
         condition,
-        userLocation,
+        searchLocation,
         equipment,
         maxTravelTime,
         maxDistance
@@ -1566,6 +1691,7 @@ export function DashboardPage() {
             onLanguageChange={setLanguage}
             onHospitalClick={setSelectedHospital}
             onUpdateSearch={fetchRoute}
+            userCoords={userCoords}
           />
         ) : null}
 
