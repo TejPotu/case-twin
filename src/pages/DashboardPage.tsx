@@ -883,10 +883,11 @@ function MatchesScreen({
           {/* Chat FAB */}
           <button
             onClick={() => setShowTwinChat(true)}
-            className="absolute bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all z-10"
-            aria-label="Open clinical chat context"
+            className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2.5 rounded-full bg-zinc-900 text-white text-[13px] font-semibold shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all z-10"
+            aria-label="Open clinical copilot"
           >
-            <Activity className="h-6 w-6" />
+            <Activity className="h-4 w-4" />
+            Ask Copilot
           </button>
         </div>
       )}
@@ -901,6 +902,7 @@ function MatchesScreen({
         isOpen={showTwinChat}
         onClose={() => setShowTwinChat(false)}
         match={selected}
+        currentProfile={originalProfile ?? null}
       />
     </div >
   );

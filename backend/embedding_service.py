@@ -142,7 +142,7 @@ def _extract_embedding(payload: Any) -> list[float]:
 # Public API — MedGemma remote endpoint
 # ---------------------------------------------------------------------------
 
-def query_medgemma(image: Image.Image, prompt: str = "Describe this chest X-ray.", max_tokens: int = 200) -> dict:
+def query_medgemma(image: Image.Image, prompt: str = "Describe this chest X-ray.", max_tokens: int = 200, stop_sequences: list[str] = None) -> dict:
     """
     Send an image + text prompt to the MedGemma endpoint and return the raw
     JSON response.  Raises httpx.HTTPStatusError on non-2xx replies.
@@ -150,12 +150,16 @@ def query_medgemma(image: Image.Image, prompt: str = "Describe this chest X-ray.
     if not MEDGEMMA_ENDPOINT:
         raise RuntimeError("Set MEDGEMMA_ENDPOINT in .env")
 
+    params = {"max_new_tokens": max_tokens}
+    if stop_sequences:
+        params["stop"] = stop_sequences
+
     payload = {
         "inputs": {
             "image": _image_to_b64_data_uri(image),
             "text": prompt,
         },
-        "parameters": {"max_new_tokens": max_tokens},
+        "parameters": params,
     }
 
     client = _get_client()

@@ -528,31 +528,135 @@ async def search_hospitals(
 @app.post("/chat_twin")
 async def chat_twin(
     query: str = Form(...),
-    case_text: str = Form(...)
+    case_text: str = Form(...),
+    current_profile: Optional[str] = Form(default=None),
 ):
     """
-    RAG over the historic case profile context. Ask MedGemma to respond.
+    Dual-context clinical reasoning. Grounds MedGemma in:
+      1. The historical twin case (case_text + any structured payload)
+      2. The current patient's CaseProfile (current_profile JSON, optional)
+    Returns a markdown-formatted reply.
     """
-    prompt = f"User Query: {query}\n\nCase Text:\n{case_text}\n\nYou are a helpful medical assistant. Answer the user's query concisely based ONLY on the evidence provided in the case text above."
-    
-    # We create a dummy black image to satisfy the multimodal endpoint
+    # ── Build current patient context block ──────────────────────────────────
+    current_ctx = ""
+    if current_profile:
+        try:
+            cp = json.loads(current_profile)
+            pat = cp.get("patient", {})
+            pres = cp.get("presentation", {})
+            assess = cp.get("assessment", {})
+            findings = cp.get("findings", {})
+
+            age = pat.get("age_years")
+            sex = pat.get("sex")
+            comorbidities = ", ".join(pat.get("comorbidities", [])) or "none documented"
+            cc = pres.get("chief_complaint") or "not specified"
+            hpi = (pres.get("hpi") or "")[:300]
+            diagnosis = assess.get("diagnosis_primary") or "undetermined"
+            urgency = assess.get("urgency") or ""
+            icu = assess.get("icu_candidate") or ""
+
+            lung_findings = []
+            lungs = findings.get("lungs", {})
+            pleura = findings.get("pleura", {})
+            cardio = findings.get("cardiomediastinal", {})
+            if lungs.get("consolidation_present") == "yes": lung_findings.append("consolidation")
+            if lungs.get("edema_present") == "yes": lung_findings.append("pulmonary edema")
+            if lungs.get("atelectasis_present") == "yes": lung_findings.append("atelectasis")
+            if pleura.get("effusion_present") == "yes": lung_findings.append("pleural effusion")
+            if pleura.get("pneumothorax_present") == "yes": lung_findings.append("pneumothorax")
+            if cardio.get("cardiomegaly") == "yes": lung_findings.append("cardiomegaly")
+
+            findings_str = ", ".join(lung_findings) if lung_findings else "none extracted"
+
+            current_ctx = f"""
+## Current Patient Profile
+- **Demographics:** {f'{age}y ' if age else ''}{sex or 'unknown sex'}
+- **Comorbidities:** {comorbidities}
+- **Chief complaint:** {cc}
+- **Clinical narrative:** {hpi or 'not provided'}
+- **Primary diagnosis (extracted):** {diagnosis}
+- **Urgency:** {urgency}{f' | ICU candidate: {icu}' if icu else ''}
+- **Key findings:** {findings_str}
+"""
+        except Exception as e:
+            print(f"Failed to parse current_profile: {e}")
+
+    # ── Build historical twin context block ───────────────────────────────────
+    twin_ctx = f"""
+## Historical Twin Case
+{case_text[:800]}
+"""
+
+    # ── System prompt ─────────────────────────────────────────────────────────
+    system_prompt = (
+        "You are an expert clinical reasoning assistant. "
+        "Consult the two medical cases below and answer the clinician's question. "
+        "Keep your answer EXTREMELY short (maximum 3 sentences or 3 bullet points total). "
+        "Use Markdown formatting (bullet points, **bold** text). "
+        "CRITICAL INSTRUCTIONS: Do NOT generate long repetitive lists. Never use more than 3 bullet points. "
+        "Do NOT add introductory filler. Jump straight into the clinical facts.\n"
+        "IMPORTANT: Do NOT append a 'Final Answer:' section or use mathematical LaTeX boxes (\\boxed{}). Just provide the direct text response.\n\n"
+        f"{twin_ctx}"
+        f"{current_ctx}"
+        "\n---\n"
+        f"Question: {query}\n\n"
+        "Expert Answer:"
+    )
+
     dummy_img = Image.new("RGB", (336, 336), color=(0, 0, 0))
     try:
-        resp = query_medgemma(dummy_img, prompt=prompt, max_tokens=300)
+        import asyncio
+        stop_words = ["Final Answer:", "Final Answer", "---\nQuestion:", "Question:"]
+        resp = await asyncio.to_thread(query_medgemma, dummy_img, prompt=system_prompt, max_tokens=350, stop_sequences=stop_words)
         if isinstance(resp, list) and len(resp) > 0:
-            reply = resp[0].get("generated_text", "")
-            # Clean up the prompt from the response if the model echoes it
-            if "case text above." in reply:
-                reply = reply.split("case text above.")[-1].strip()
+            reply = resp[0].get("generated_text", "").strip()
             
-            # Simple fallback if empty
+            # Cleanly strip prompt echoing without relying on arbitrary [-50:] slices:
+            if "Expert Answer:" in reply:
+                reply = reply.split("Expert Answer:")[-1].strip()
+            elif f"Question: {query}" in reply:
+                reply = reply.split(f"Question: {query}")[-1].strip()
+
+            # Strip mathematical "Final Answer:" boxed formatting AND loops
+            import re
+            
+            # The ultimate loop killer: If it generated "Final Answer" at all, 
+            # throw away everything from that point onward forever.
+            if "Final Answer" in reply:
+                reply = reply.split("Final Answer")[0].strip()
+                
+            reply = re.sub(r"\\boxed{", "", reply)
+            
+            # Remove trailing closing brace from LaTeX box if it exists at the end
+            if reply.endswith("}"):
+                reply = reply[:-1].strip()
+                
+            # Clean up leading non-word artifacts if model started weirdly
+            reply = re.sub(r"^[\W_]+", "", reply)
+
+            # BRUTAL DEDUPLICATION: Kill repeating lines (AI stuttering)
+            lines = [line.strip() for line in reply.split('\n') if line.strip()]
+            seen = set()
+            dedupped_lines = []
+            for line in lines:
+                # Use a slightly normalized version of the line for matching to catch slight variations
+                norm_line = re.sub(r'\W+', '', line.lower())
+                if norm_line not in seen:
+                    seen.add(norm_line)
+                    dedupped_lines.append(line)
+            
+            # Rejoin the cleaned lines
+            reply = '\n\n'.join(dedupped_lines)
+
             if not reply:
-                reply = "I don't have enough clear information in the case text to answer that."
+                reply = "I don't have enough information in the provided case context to answer that."
             return {"reply": reply}
     except Exception as e:
         print(f"MedGemma chat error: {e}")
-        
+
     return {"reply": "I'm sorry, I couldn't reach the AI reasoning engine to answer this question right now."}
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
