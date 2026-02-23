@@ -28,10 +28,17 @@ from qdrant_service import search_similar
 
 app = FastAPI(title="CaseTwin API", version="1.0.0")
 
-# Allow the Vite dev server (and any localhost port) to call the API
+# Origins: comma-separated list injected via ALLOWED_ORIGINS env var in prod.
+# Falls back to localhost dev origins when the var is not set.
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173",
+)
+_allowed_origins = [o.strip() for o in _raw_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -382,112 +389,134 @@ async def search_hospitals(
             print(f"[{datetime.now().strftime('%H:%M:%S')}] [search_hospitals] You.com Search Snippets:\n{all_text[:300]}...\n", flush=True)
 
             import random
-            
+
             centers = []
             seen_names = set()
-            
+
+            # ── Gemini batch call: clean names + proper rationales for all hits ──────
+            gemini_api_key_g = os.getenv("GEMINI_API_KEY")
+            ai_enriched: list = []
+            if gemini_api_key_g and web_results:
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=gemini_api_key_g)
+                    g_model = genai.GenerativeModel("gemini-2.0-flash")
+                    raw_for_gemini = [
+                        {
+                            "title": h.get("title", ""),
+                            "url": h.get("url", ""),
+                            "snippet": (h.get("description", "") or " ".join(h.get("snippets", [])))[:400],
+                        }
+                        for h in web_results[:10]
+                    ]
+                    g_prompt = (
+                        f'You are a medical facility data extractor. These are web search results for '
+                        f'hospitals treating "{diagnosis}" near {search_location_str}.\n\n'
+                        f'STRICT RULES for "name":\n'
+                        f'- Must be the official name of a HOSPITAL, MEDICAL CENTER, or CLINIC institution\n'
+                        f'- NEVER use service or department names as the facility name. '
+                        f'  Examples of INVALID names: "Interventional Radiology", "Imaging Services", '
+                        f'  "Imaging and Radiology", "Home", "CT Scan", "MRI Services"\n'
+                        f'- If the page title is a service/department, extract the institution name from '
+                        f'  the URL domain or snippet instead. '
+                        f'  Example: title="Imaging Services", domain="tmh.org" → name="Tallahassee Memorial Hospital"\n'
+                        f'- Strip location prefixes from names. '
+                        f'  Example: "Tallahassee, FL • American Health Imaging" → "American Health Imaging"\n'
+                        f'- If two results belong to the SAME institution, use the EXACT same name for both\n'
+                        f'- If no valid institution name can be determined at all, return null for that entry\n\n'
+                        f'For each result also extract:\n'
+                        f'"rationale": 2–3 concise sentences explaining why this facility is a strong '
+                        f'match for treating {diagnosis}\n\n'
+                        f'Input:\n{json.dumps(raw_for_gemini)}\n\n'
+                        f'Return ONLY a JSON array, same length and order as input, no markdown:\n'
+                        f'[{{"name": "..." or null, "rationale": "..."}}]'
+                    )
+                    def _call_gemini():
+                        return g_model.generate_content(g_prompt)
+                    g_resp = await asyncio.to_thread(_call_gemini)
+                    g_text = g_resp.text.strip()
+                    for prefix in ("```json", "```"):
+                        if g_text.startswith(prefix):
+                            g_text = g_text[len(prefix):]
+                    if g_text.endswith("```"):
+                        g_text = g_text[:-3]
+                    ai_enriched = json.loads(g_text.strip())
+                    print(f"[search_hospitals] Gemini enriched {len(ai_enriched)} entries", flush=True)
+                except Exception as e:
+                    print(f"[search_hospitals] Gemini enrichment failed, using raw titles: {e}", flush=True)
+                    ai_enriched = []
+
+            # Pad so we can safely index by position
+            while len(ai_enriched) < len(web_results):
+                ai_enriched.append({})
+
             for i, hit in enumerate(web_results):
                 if len(centers) >= 10:
                     break
-                    
-                title = hit.get("title", f"Top Hospital {len(centers)+1}")
-                url = hit.get("url", "")
-                
-                import re
-                
-                # --- Smarter Name Extraction ---
-                name = title.split(" | ")[0].split(" - ")[0].strip()
-                
-                # If name is extremely generic (e.g. just a department name), use the URL domain instead
-                generic_terms = ["interventional", "radiology", "imaging", "mri", "ct", "paragonimiasis", "services", "treatment", "clinic"]
-                if any(term in name.lower() for term in generic_terms):
-                    try:
-                        import urllib.parse
-                        domain = urllib.parse.urlparse(url).netloc
-                        clean_domain = domain.replace("www.", "").split(".")[0]
-                        
-                        # Add spaces before common medical words to beautify squished names
-                        # e.g., americanhealthimaging -> american health imaging
-                        spaced_name = re.sub(
-                            r'(american|national|regional|state|county|city|health|imaging|medical|care|hospital|clinic|center|florida|new|york|texas|memorial|university|mount|sinai|ny|nyp|nsuh|tmh|general|childrens|cancer|institute|pediatric)', 
-                            r' \1 ', clean_domain, flags=re.IGNORECASE
-                        )
-                        # Clean up any double spaces and title case it
-                        spaced_name = " ".join(spaced_name.split()).title()
-                        
-                        name = spaced_name + " Hospital"
-                    except:
-                        pass
-                
-                name = name.replace("...", "").strip()
+
+                gd = ai_enriched[i] if i < len(ai_enriched) else {}
+
+                # Skip entries Gemini couldn't resolve to a real institution name
+                if gd.get("name") is None and i < len(ai_enriched):
+                    continue
+
+                name = (gd.get("name") or "").strip()
                 if not name:
-                    name = f"Medical Center {len(centers)+1}"
-                    
-                # Ensure the name is unique to prevent duplicate React keys
+                    # Gemini call failed entirely — use title as last resort
+                    name = hit.get("title", "").split(" | ")[0].split(" - ")[0].strip()
+                name = name.replace("...", "").strip() or f"Medical Center {len(centers) + 1}"
+
                 if name.lower() in seen_names:
                     continue
                 seen_names.add(name.lower())
-                
+
+                url = hit.get("url", "")
+
+                # Rationale: Gemini output first, fall back to raw snippet
+                rationale = (gd.get("rationale") or "").strip()
+                if not rationale:
+                    rationale = hit.get("description", "") or " ".join(hit.get("snippets", []))
+                if not rationale:
+                    rationale = "Specialized care facility."
+
                 # --- Geopy Coordinates ---
-                # Fallback fuzz is tightly clustered around the requested city (user_lat/user_lng)
                 h_lat = user_lat + random.uniform(-0.06, 0.06)
                 h_lng = user_lng + random.uniform(-0.06, 0.06)
-                
                 try:
-                    # Append the search_location_str to give Nominatim geographic context
-                    # Remove the word 'Hospital' if it was injected, as it confuses Geopy sometimes
-                    clean_query_name = name.replace(" Hospital", "")
-                    geo_query = f"{clean_query_name}, {search_location_str}"
+                    geo_query = f"{name}, {search_location_str}"
                     h_loc_data = await asyncio.to_thread(geocode_loc, geo_query)
                     if h_loc_data:
                         h_lat, h_lng = h_loc_data.latitude, h_loc_data.longitude
                     else:
-                        # Try just the name without ' hospital' but with location
                         h_loc_data_fallback = await asyncio.to_thread(geocode_loc, name)
                         if h_loc_data_fallback:
                             h_lat, h_lng = h_loc_data_fallback.latitude, h_loc_data_fallback.longitude
                 except Exception as e:
                     print(f"Geocoding hospital '{name}' failed: {e}", flush=True)
-                
-                # --- OSRM ETA Calculation ---
-                travel_str = f"{1 + i}h {(i * 15) % 60}m" # Fallback mock time
+
+                # --- OSRM ETA ---
+                travel_str = f"{max(1, (i * 15) // 60)}h {(i * 15) % 60}m"
                 try:
-                    # OSRM expects coordinates in lng,lat order
                     osrm_url = f"http://router.project-osrm.org/route/v1/driving/{user_lng},{user_lat};{h_lng},{h_lat}?overview=false"
                     osrm_resp = await client.get(osrm_url)
                     if osrm_resp.status_code == 200:
                         route_data = osrm_resp.json()
-                        if route_data.get("routes") and len(route_data["routes"]) > 0:
-                            duration_seconds = route_data["routes"][0].get("duration", 0)
-                            hours = int(duration_seconds // 3600)
-                            minutes = int((duration_seconds % 3600) // 60)
-                            if hours > 0:
-                                travel_str = f"{hours}h {minutes}m"
-                            else:
-                                travel_str = f"{minutes}m"
-                            print(f"[OSRM] Calculated true driving ETA for '{name}': {travel_str} (Distance: {round(route_data['routes'][0].get('distance',0)*0.000621371, 1)} miles)", flush=True)
+                        if route_data.get("routes"):
+                            dur = route_data["routes"][0].get("duration", 0)
+                            hours, minutes = int(dur // 3600), int((dur % 3600) // 60)
+                            travel_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+                            print(f"[OSRM] ETA for '{name}': {travel_str}", flush=True)
                 except Exception as e:
                     print(f"OSRM ETA failed for {name}: {e}", flush=True)
-
-                # Construct the full reason from description or snippets without aggressively truncating
-                raw_desc = hit.get("description", "")
-                if not raw_desc:
-                    raw_desc = " ".join(hit.get("snippets", []))
-                
-                if not raw_desc:
-                    raw_desc = "Specialized care facility."
-                
-                # Still cap it at a reasonable length to prevent massive text blocks, but much larger than 60 chars
-                final_reason = raw_desc[:350] + ("..." if len(raw_desc) > 350 else "")
 
                 centers.append({
                     "name": name,
                     "url": url,
                     "capability": str(99 - i) + "%",
                     "travel": travel_str,
-                    "reason": final_reason,
+                    "reason": rationale,
                     "lat": h_lat,
-                    "lng": h_lng
+                    "lng": h_lng,
                 })
             
             if centers:
