@@ -5,6 +5,7 @@ import { type OrchestratorState, createInitialState } from '@/lib/agenticOrchest
 export interface Specialist {
     name: string;
     specialty: string;
+    credentials?: string;
     context: string;
     url?: string;
     phone?: string;

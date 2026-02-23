@@ -1,0 +1,61 @@
+# -------------------------------------------------------
+# .gcloudignore
+# Files excluded when `gcloud run deploy --source .`
+# uploads the build context to Cloud Build.
+# By default gcloud also respects .gitignore — this file
+# adds extra exclusions on top.
+# -------------------------------------------------------
+
+# Tell gcloud to also respect .gitignore
+.gcloudignore
+.gitignore
+
+# Git metadata
+.git/
+
+# Python virtual environment
+casetwin/
+backend/.venv/
+backend/venv/
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Node dependencies and build output (rebuilt in Cloud Build)
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Environment / secrets — use Cloud Run --set-env-vars or Secret Manager
+.env
+.env.*
+!.env.production
+backend/.env
+backend/env.yaml
+backend/application_default_credentials.json
+
+# Large data / ingest files (not needed at runtime)
+dataset*.json
+*.jsonl
+ingest_*.py
+
+# Notebooks and test scripts
+*.ipynb
+backend/test.py
+tests/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Docs
+README.md
+docs/

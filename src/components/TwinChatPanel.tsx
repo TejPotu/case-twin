@@ -25,7 +25,7 @@ const STARTERS = [
     "Was ICU required for the twin?",
 ];
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export function TwinChatPanel({ isOpen, onClose, match, currentProfile }: TwinChatPanelProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);

@@ -1,7 +1,7 @@
 import type { CaseProfile } from "./caseProfileTypes";
 import { emptyProfile } from "./caseProfileTypes";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 // ─── Confidence scoring ────────────────────────────────────────────────────
 

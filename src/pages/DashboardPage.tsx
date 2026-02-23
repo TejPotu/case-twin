@@ -3,6 +3,8 @@ import { useDashboardStore } from "@/store/dashboardStore";
 import { Check, FileText, Loader2, MapPin, Settings2, Stethoscope, FolderOpen, Plus, HeartPulse, CloudOff, Scan, Microscope, Activity, ChevronLeft, Building2, X, Phone, ChevronRight } from "lucide-react";
 import { searchByImage, findHospitalsRoute } from "@/lib/mockUploadApis";
 import { computeProfileConfidence } from "@/lib/caseProfileUtils";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 import { type CaseProfile } from "@/lib/caseProfileTypes";
 import { CaseProfileView } from "@/components/CaseProfileView";
 import { AgenticCopilotPanel } from "@/components/AgenticCopilotPanel";
@@ -278,7 +280,7 @@ function UploadScreen({
         fd.append("file", uploadedFile);
       }
 
-      const response = await fetch("http://localhost:8000/enhance_profile", {
+      const response = await fetch(`${API_BASE}/enhance_profile`, {
         method: "POST",
         body: fd,
       });
@@ -1082,46 +1084,57 @@ function RouteScreen({
   const { extractedSpecialists, setExtractedSpecialists: setStoreSpecialists } = useDashboardStore();
   const [isExtractingSpecialists, setIsExtractingSpecialists] = useState(false);
 
+  // Ref keeps latest cache snapshot without being a useEffect dependency,
+  // so the effect only re-fires when the selected hospital actually changes.
+  const extractedSpecialistsRef = useRef(extractedSpecialists);
+  extractedSpecialistsRef.current = extractedSpecialists;
+
+  // Tracks the AbortController of the current in-flight request so we can
+  // cancel it immediately if the user switches to a different hospital.
+  const inflightRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!selectedHospital) return;
     const name = selectedHospital.name;
-    const url = selectedHospital.url || "";
 
-    // If we already have specialists cached in the store, don't re-fetch
-    if (extractedSpecialists[name]) return;
+    // Already have data for this hospital — nothing to do.
+    if (extractedSpecialistsRef.current[name] !== undefined) return;
+
+    // Cancel the previous request (different hospital) if still running.
+    inflightRef.current?.abort();
+    const controller = new AbortController();
+    inflightRef.current = controller;
 
     setIsExtractingSpecialists(true);
-    console.log(`[SpecialistAgent] Starting research for ${name} (${url}) with diagnosis: ${patientCondition}`);
 
     const formData = new FormData();
-    formData.append("url", url);
+    formData.append("url", selectedHospital.url || "");
     formData.append("diagnosis", patientCondition);
     formData.append("hospital_name", name);
-    // Use userCoords if available for more accurate search
-    if (userCoords) {
-      formData.append("location", userCoords);
-    }
+    if (userCoords) formData.append("location", userCoords);
 
-    fetch("http://localhost:8000/analyze_hospital_page", {
+    fetch(`${API_BASE}/analyze_hospital_page`, {
       method: "POST",
       body: formData,
+      signal: controller.signal,
     })
-      .then((res) => {
-        console.log(`[SpecialistAgent] Response status: ${res.status}`);
-        return res.json();
-      })
+      .then((res) => res.json())
       .then((data) => {
-        console.log(`[SpecialistAgent] Extracted specialists for ${name}:`, data.specialists);
-        setStoreSpecialists(name, data.specialists || []);
+        if (!controller.signal.aborted) {
+          setStoreSpecialists(name, data.specialists || []);
+        }
       })
       .catch((err) => {
-        console.error(`[SpecialistAgent] Failed to extract specialists for ${name}:`, err);
-        setStoreSpecialists(name, []);
+        if (err.name !== "AbortError") {
+          setStoreSpecialists(name, []);
+        }
       })
       .finally(() => {
-        setIsExtractingSpecialists(false);
+        if (!controller.signal.aborted) {
+          setIsExtractingSpecialists(false);
+        }
       });
-  }, [selectedHospital, patientCondition, extractedSpecialists, userCoords, setStoreSpecialists]);
+  }, [selectedHospital, patientCondition, userCoords, setStoreSpecialists]);
 
   const safeCenters = Array.isArray(centers) ? centers : [];
   const validCenters = safeCenters.filter(c => typeof c.lat === "number" && typeof c.lng === "number");
@@ -1298,16 +1311,19 @@ function RouteScreen({
                       {extractedSpecialists[selectedHospital.name].map((specialist, idx) => (
                         <div key={idx} className="p-4 rounded-xl border border-zinc-200/60 bg-zinc-50/50 hover:bg-zinc-50 hover:border-zinc-300/60 transition-colors">
                           <div className="flex items-start justify-between gap-2 mb-2">
-                            <div>
+                            <div className="flex-1 min-w-0">
                               <span className="block font-semibold text-[15px] text-zinc-900">{specialist.name}</span>
-                              <span className="text-[13px] text-zinc-500 font-medium">{specialist.specialty}</span>
+                              <span className="text-[13px] text-[var(--mr-action)] font-medium">{specialist.specialty}</span>
+                              {specialist.credentials && (
+                                <span className="block text-[12px] text-zinc-500 mt-0.5">{specialist.credentials}</span>
+                              )}
                             </div>
                             {specialist.url && (
                               <a
                                 href={specialist.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center justify-center p-1.5 rounded-md hover:bg-zinc-200/60 text-zinc-400 hover:text-zinc-700 transition-colors"
+                                className="inline-flex items-center justify-center p-1.5 rounded-md hover:bg-zinc-200/60 text-zinc-400 hover:text-zinc-700 transition-colors shrink-0"
                                 aria-label="View Profile"
                               >
                                 <ChevronRight className="w-4 h-4" />

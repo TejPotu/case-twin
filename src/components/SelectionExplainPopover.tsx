@@ -18,7 +18,7 @@ interface PopoverState {
     width: number;
 }
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 /**
  * Wraps children with a text-selection listener.
