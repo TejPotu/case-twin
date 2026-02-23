@@ -5,6 +5,12 @@ POST /extract  — extract a structured CaseProfile from images + clinical notes
 GET  /health   — health check.
 """
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_PROJECT"] = "casetwin"
+
 import io
 import json
 import re
@@ -476,6 +482,7 @@ async def search_hospitals(
 
                 centers.append({
                     "name": name,
+                    "url": url,
                     "capability": str(99 - i) + "%",
                     "travel": travel_str,
                     "reason": final_reason,
@@ -496,6 +503,7 @@ async def search_hospitals(
         fallback = [
              {
                 "name": "Mayo Clinic — Rochester",
+                "url": "https://www.mayoclinic.org/patient-visitor-guide/minnesota",
                 "capability": "100%",
                 "travel": "2h 10m",
                 "reason": f"Interventional Pulmonology + Leading care for {diagnosis}",
@@ -504,6 +512,7 @@ async def search_hospitals(
             },
             {
                 "name": "Cleveland Clinic",
+                "url": "https://my.clevelandclinic.org/locations",
                 "capability": "95%",
                 "travel": "1h 55m",
                 "reason": "Thoracic surgery + Clinical trials",
@@ -512,6 +521,7 @@ async def search_hospitals(
             },
             {
                 "name": "Mass General",
+                "url": "https://www.massgeneral.org/",
                 "capability": "90%",
                 "travel": "3h 05m",
                 "reason": "Radiation oncology + Research program",
@@ -942,3 +952,33 @@ async def _extract_profile(images: Optional[List[UploadFile]], text: str) -> dic
         profile["extra_fields"] = {}
 
     return profile
+
+# ──────────────────────────────────────────────────────────────────────────────
+# /analyze_hospital_page  – CrewAI Agent endpoint for doctor extraction
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/analyze_hospital_page")
+async def analyze_hospital_page(
+    url: str = Form(...),
+    diagnosis: str = Form(...),
+    hospital_name: str = Form(default=""),
+    location: str = Form(default="")
+):
+    """
+    Triggers the CrewAI agent to scrape the given hospital URL and return doctors
+    specializing in the given diagnosis.
+    """
+    import asyncio
+    import agents
+    
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [analyze_hospital_page] Received request for {hospital_name} (location: {location})")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [analyze_hospital_page] LANGCHAIN_TRACING_V2={os.getenv('LANGCHAIN_TRACING_V2')}")
+    
+    try:
+        # Run CrewAI synchronously inside an async thread to prevent blocking Uvicorn
+        data = await asyncio.to_thread(agents.analyze_hospital_staff, url, diagnosis, hospital_name, location)
+        return {"specialists": data}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Agent endpoint failed: {e}")
+        return {"specialists": [], "error": str(e)}

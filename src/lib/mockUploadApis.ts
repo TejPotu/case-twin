@@ -310,6 +310,7 @@ function delay(ms: number) {
 
 export interface RouteCenter {
   name: string;
+  url?: string;
   capability: string;
   travel: string;
   reason: string;
