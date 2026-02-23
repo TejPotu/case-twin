@@ -660,6 +660,153 @@ async def chat_twin(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# /enhance_profile  – MedGemma generates deep Clinical Synthesis
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/enhance_profile")
+async def enhance_profile(
+    profile_json: str = Form(...),
+    file: Optional[UploadFile] = File(None)
+):
+    """
+    Takes the structured case profile JSON and an optional image,
+    and asks MedGemma to synthesize hidden insights, missing risk factors,
+    and prognostic observations into a 3-4 sentence Markdown block.
+    """
+    try:
+        profile_data = json.loads(profile_json)
+        
+        # Build context from profile
+        age = profile_data.get("patient", {}).get("age_years", "")
+        sex = profile_data.get("patient", {}).get("sex", "")
+        cc = profile_data.get("presentation", {}).get("chief_complaint", "")
+        hpi = profile_data.get("presentation", {}).get("hpi", "")
+        pmh = profile_data.get("presentation", {}).get("pmh", "")
+        dx = profile_data.get("assessment", {}).get("diagnosis_primary", "")
+        comorb = ", ".join(profile_data.get("patient", {}).get("comorbidities", []) or [])
+        
+        ctx = f"Patient: {age}y {sex}\nCC: {cc}\nHPI: {hpi}\nPMH: {pmh}\nComorbidities: {comorb}\nPrimary Dx: {dx}"
+        
+        system_prompt = (
+            "You are an expert clinical reasoning assistant. "
+            "Review the patient profile below (and the image if provided). "
+            "Write an 'AI Clinical Synthesis' providing deep medical insights, potential "
+            "hidden risk factors, or prognostic observations that are NOT just repeating the provided text. "
+            "Keep your synthesis to EXACTLY 3-4 short sentences or bullet points. "
+            "Use Markdown format (bold key terms). Do NOT generate repetitive lists. "
+            "Do NOT append 'Final Answer:'. Do not include intro filler.\n\n"
+            f"## Case Profile\n{ctx[:800]}\n\n"
+            "Clinical Synthesis:"
+        )
+
+        img = None
+        has_image = False
+        if file and file.filename:
+            content = await file.read()
+            img = Image.open(io.BytesIO(content)).convert("RGB")
+            has_image = True
+        else:
+            img = Image.new("RGB", (336, 336), color=(0, 0, 0))
+
+        import asyncio
+        stop_words_synthesis = ["Final Answer:", "Final Answer", "---\nClinical Synthesis:", "Clinical Synthesis:"]
+        
+        # Prepare concurrent tasks
+        tasks = [
+            asyncio.to_thread(query_medgemma, img, prompt=system_prompt, max_tokens=250, stop_sequences=stop_words_synthesis)
+        ]
+        
+        # If image exists, add a second task for Imaging Context
+        if has_image:
+            imaging_prompt = (
+                "You are an expert radiologist. "
+                "Review the provided medical image and the patient's brief clinical context below. "
+                "Write an 'Imaging Context' summary focusing strictly on the key radiological findings, "
+                "their severity, and their direct clinical relevance to the patient's presentation. "
+                "Keep it to EXACTLY 2-3 short sentences. "
+                "Use Markdown format (bold key terms). Do NOT generate repetitive lists. "
+                "Do NOT append 'Final Answer:'.\n\n"
+                f"## Case Context\n{ctx[:500]}\n\n"
+                "Imaging Context:"
+            )
+            stop_words_imaging = ["Final Answer:", "Final Answer", "---\nImaging Context:", "Imaging Context:"]
+            tasks.append(
+                asyncio.to_thread(query_medgemma, img, prompt=imaging_prompt, max_tokens=200, stop_sequences=stop_words_imaging)
+            )
+
+        # Execute concurrently
+        results = await asyncio.gather(*tasks)
+        
+        # --- Process Synthesis ---
+        resp_synthesis = results[0]
+        reply_synthesis = ""
+        if isinstance(resp_synthesis, list) and len(resp_synthesis) > 0:
+            reply_synthesis = resp_synthesis[0].get("generated_text", "").strip()
+            
+            if "Clinical Synthesis:" in reply_synthesis:
+                reply_synthesis = reply_synthesis.split("Clinical Synthesis:")[-1].strip()
+            if "Final Answer" in reply_synthesis:
+                reply_synthesis = reply_synthesis.split("Final Answer")[0].strip()
+                
+            import re
+            reply_synthesis = re.sub(r"\\boxed{", "", reply_synthesis)
+            if reply_synthesis.endswith("}"): reply_synthesis = reply_synthesis[:-1].strip()
+            reply_synthesis = re.sub(r"^[\W_]+", "", reply_synthesis)
+
+            # Deduplication
+            lines = [line.strip() for line in reply_synthesis.split('\n') if line.strip()]
+            seen = set()
+            dedupped_lines = []
+            for line in lines:
+                norm_line = re.sub(r'\W+', '', line.lower())
+                if norm_line not in seen:
+                    seen.add(norm_line)
+                    dedupped_lines.append(line)
+            reply_synthesis = '\n\n'.join(dedupped_lines)
+
+        if not reply_synthesis:
+            reply_synthesis = "Unable to generate clinical synthesis."
+
+        # --- Process Imaging Context (if available) ---
+        reply_imaging = None
+        if has_image and len(results) > 1:
+            resp_imaging = results[1]
+            if isinstance(resp_imaging, list) and len(resp_imaging) > 0:
+                reply_imaging = resp_imaging[0].get("generated_text", "").strip()
+                
+                if "Imaging Context:" in reply_imaging:
+                    reply_imaging = reply_imaging.split("Imaging Context:")[-1].strip()
+                if "Final Answer" in reply_imaging:
+                    reply_imaging = reply_imaging.split("Final Answer")[0].strip()
+                    
+                import re
+                reply_imaging = re.sub(r"\\boxed{", "", reply_imaging)
+                if reply_imaging.endswith("}"): reply_imaging = reply_imaging[:-1].strip()
+                reply_imaging = re.sub(r"^[\W_]+", "", reply_imaging)
+
+                # Deduplication
+                lines = [line.strip() for line in reply_imaging.split('\n') if line.strip()]
+                seen = set()
+                dedupped_lines = []
+                for line in lines:
+                    norm_line = re.sub(r'\W+', '', line.lower())
+                    if norm_line not in seen:
+                        seen.add(norm_line)
+                        dedupped_lines.append(line)
+                reply_imaging = '\n\n'.join(dedupped_lines)
+
+        return {
+            "synthesis": reply_synthesis,
+            "imaging_context": reply_imaging
+        }
+            
+    except Exception as e:
+        print(f"MedGemma enhance error: {e}")
+        return {"synthesis": "I'm sorry, I couldn't generate the clinical synthesis right now.", "imaging_context": None}
+
+    return {"synthesis": "Unable to process the request.", "imaging_context": None}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # /explain_selection  – MedGemma explains a highlighted phrase in context
 # ──────────────────────────────────────────────────────────────────────────────
 @app.post("/explain_selection")

@@ -233,6 +233,7 @@ function Stepper({ step, onStepChange }: { step: Step; onStepChange: (next: Step
 function UploadScreen({
   onImageFilePicked,
   onStepChange,
+  uploadedFile,
 }: {
   deIdentify?: boolean;
   saveToHistory?: boolean;
@@ -240,6 +241,7 @@ function UploadScreen({
   onSaveHistoryChange?: (next: boolean) => void;
   onImageFilePicked: (file: File | null) => void;
   onStepChange: (step: Step) => void;
+  uploadedFile?: File | null;
 }) {
   const profile = useDashboardStore(s => s.profile);
   const setProfile = useDashboardStore(s => s.setProfile);
@@ -257,6 +259,42 @@ function UploadScreen({
   const handleReadyToProceed = useCallback(() => {
     onStepChange(1); // advance to Review
   }, [onStepChange]);
+
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancedSynthesis, setEnhancedSynthesis] = useState<string | null>(null);
+  const [enhancedImaging, setEnhancedImaging] = useState<string | null>(null);
+
+  const handleEnhanceProfile = async () => {
+    if (!profile) return;
+
+    setIsEnhancing(true);
+    try {
+      const fd = new FormData();
+      fd.append("profile_json", JSON.stringify(profile));
+      if (uploadedFile) {
+        fd.append("file", uploadedFile);
+      }
+
+      const response = await fetch("http://localhost:8000/enhance_profile", {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to enhance profile");
+      }
+
+      const data = await response.json();
+      setEnhancedSynthesis(data.synthesis);
+      if (data.imaging_context) {
+        setEnhancedImaging(data.imaging_context);
+      }
+    } catch (error) {
+      console.error("Error enhancing profile:", error);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(50);
@@ -326,7 +364,13 @@ function UploadScreen({
           <div className="flex-1 overflow-y-auto w-full relative">
             {profile && conf.score > 0 ? (
               <div className="p-8 pb-32 transition-all">
-                <CaseProfileView profile={profile} />
+                <CaseProfileView
+                  profile={profile}
+                  onEnhance={handleEnhanceProfile}
+                  isEnhancing={isEnhancing}
+                  enhancedSynthesis={enhancedSynthesis ?? undefined}
+                  enhancedImaging={enhancedImaging ?? undefined}
+                />
               </div>
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-zinc-50/20 group">
@@ -1469,6 +1513,7 @@ export function DashboardPage() {
             onSaveHistoryChange={setSaveToHistory}
             onImageFilePicked={setUploadedFile}
             onStepChange={handleStepChange}
+            uploadedFile={uploadedFile}
           />
         ) : null}
 

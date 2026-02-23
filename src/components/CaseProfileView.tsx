@@ -28,6 +28,7 @@ import {
     FlaskConical,
     Heart,
     Layers,
+    Loader2,
     Microscope,
     Stethoscope,
     Tag,
@@ -36,6 +37,8 @@ import {
     XCircle,
     Zap,
 } from "lucide-react";
+
+import ReactMarkdown from "react-markdown";
 
 // ─── Helper atoms ─────────────────────────────────────────────────────────────
 
@@ -174,10 +177,11 @@ function PresentationSection({ pres }: { pres: PresentationInfo }) {
     );
 }
 
-function StudySection({ study }: { study: StudyInfo }) {
+function StudySection({ study, enhancedImaging }: { study: StudyInfo, enhancedImaging?: string }) {
     const hasAny = !isEmpty(study.image_url) || !isEmpty(study.modality) ||
         !isEmpty(study.view_position) || !isEmpty(study.body_region) ||
-        !isEmpty(study.image_type) || !isEmpty(study.image_subtype);
+        !isEmpty(study.image_type) || !isEmpty(study.image_subtype) ||
+        !isEmpty(enhancedImaging);
 
     if (!hasAny) return null;
 
@@ -202,6 +206,17 @@ function StudySection({ study }: { study: StudyInfo }) {
                     {!isEmpty(study.body_region) && <Field label="Body Region" value={study.body_region as string} />}
                     {!isEmpty(study.image_subtype ?? study.image_type) && <Field label="Image Type" value={(study.image_subtype ?? study.image_type) as string} />}
                 </div>
+                {enhancedImaging && (
+                    <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-2.5 pb-2 border-b border-emerald-100/50">
+                            <Activity className="h-4 w-4 text-emerald-600" />
+                            <p className="text-[13.5px] font-semibold text-emerald-900 tracking-tight">AI Imaging Context</p>
+                        </div>
+                        <div className="prose prose-sm prose-zinc max-w-none text-[13.5px] leading-relaxed text-zinc-800 marker:text-emerald-600 prose-strong:font-semibold prose-strong:text-zinc-900">
+                            <ReactMarkdown>{enhancedImaging}</ReactMarkdown>
+                        </div>
+                    </div>
+                )}
             </div>
         </SectionCard>
     );
@@ -512,11 +527,25 @@ function ExtraFieldsSection({ extra }: { extra: Record<string, string | string[]
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function CaseProfileView({ profile, className }: { profile: CaseProfile; className?: string }) {
+export function CaseProfileView({
+    profile,
+    className,
+    onEnhance,
+    isEnhancing = false,
+    enhancedSynthesis,
+    enhancedImaging,
+}: {
+    profile: CaseProfile;
+    className?: string;
+    onEnhance?: () => void;
+    isEnhancing?: boolean;
+    enhancedSynthesis?: string;
+    enhancedImaging?: string;
+}) {
     const sections = [
         <PatientSection key="patient" patient={profile.patient} />,
         <PresentationSection key="presentation" pres={profile.presentation} />,
-        <StudySection key="study" study={profile.study} />,
+        <StudySection key="study" study={profile.study} enhancedImaging={enhancedImaging} />,
         <AssessmentSection key="assessment" assessment={profile.assessment} />,
         <FindingsSection key="findings" findings={profile.findings} />,
         <SummarySection key="summary" summary={profile.summary} />,
@@ -528,7 +557,35 @@ export function CaseProfileView({ profile, className }: { profile: CaseProfile; 
 
     return (
         <SelectionExplainPopover>
-            <div data-sel-root className={cn("space-y-4", className)}>
+            <div data-sel-root className={cn("space-y-4 relative", className)}>
+                {/* Enhance Profile Button/Header */}
+                {onEnhance && !enhancedSynthesis && (
+                    <div className="flex justify-end mb-4">
+                        <button
+                            onClick={onEnhance}
+                            disabled={isEnhancing}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-full transition-all shadow-sm border",
+                                isEnhancing
+                                    ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
+                                    : "bg-white text-zinc-700 border-zinc-200/80 hover:bg-zinc-50 hover:text-zinc-900 active:bg-zinc-100 hover:shadow-md hover:border-zinc-300"
+                            )}
+                        >
+                            {isEnhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-emerald-600" />}
+                            {isEnhancing ? "Enhancing Profile..." : "Enhance Profile"}
+                        </button>
+                    </div>
+                )}
+
+                {/* AI Clinical Synthesis Section */}
+                {enhancedSynthesis && (
+                    <SectionCard icon={<Activity className="h-4 w-4 text-white" />} title="AI Clinical Synthesis" accent="emerald" className="bg-emerald-50/40 p-5 rounded-2xl border border-emerald-100/50 -mx-5 px-5 pt-6 shadow-sm mb-6">
+                        <div className="prose prose-sm prose-zinc max-w-none text-[14px] leading-relaxed text-zinc-800 marker:text-emerald-500 prose-strong:font-semibold prose-strong:text-zinc-900">
+                            <ReactMarkdown>{enhancedSynthesis}</ReactMarkdown>
+                        </div>
+                    </SectionCard>
+                )}
+
                 {sections}
             </div>
         </SelectionExplainPopover>
