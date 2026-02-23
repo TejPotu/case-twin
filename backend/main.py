@@ -528,31 +528,329 @@ async def search_hospitals(
 @app.post("/chat_twin")
 async def chat_twin(
     query: str = Form(...),
-    case_text: str = Form(...)
+    case_text: str = Form(...),
+    current_profile: Optional[str] = Form(default=None),
 ):
     """
-    RAG over the historic case profile context. Ask MedGemma to respond.
+    Dual-context clinical reasoning. Grounds MedGemma in:
+      1. The historical twin case (case_text + any structured payload)
+      2. The current patient's CaseProfile (current_profile JSON, optional)
+    Returns a markdown-formatted reply.
     """
-    prompt = f"User Query: {query}\n\nCase Text:\n{case_text}\n\nYou are a helpful medical assistant. Answer the user's query concisely based ONLY on the evidence provided in the case text above."
-    
-    # We create a dummy black image to satisfy the multimodal endpoint
+    # ── Build current patient context block ──────────────────────────────────
+    current_ctx = ""
+    if current_profile:
+        try:
+            cp = json.loads(current_profile)
+            pat = cp.get("patient", {})
+            pres = cp.get("presentation", {})
+            assess = cp.get("assessment", {})
+            findings = cp.get("findings", {})
+
+            age = pat.get("age_years")
+            sex = pat.get("sex")
+            comorbidities = ", ".join(pat.get("comorbidities", [])) or "none documented"
+            cc = pres.get("chief_complaint") or "not specified"
+            hpi = (pres.get("hpi") or "")[:300]
+            diagnosis = assess.get("diagnosis_primary") or "undetermined"
+            urgency = assess.get("urgency") or ""
+            icu = assess.get("icu_candidate") or ""
+
+            lung_findings = []
+            lungs = findings.get("lungs", {})
+            pleura = findings.get("pleura", {})
+            cardio = findings.get("cardiomediastinal", {})
+            if lungs.get("consolidation_present") == "yes": lung_findings.append("consolidation")
+            if lungs.get("edema_present") == "yes": lung_findings.append("pulmonary edema")
+            if lungs.get("atelectasis_present") == "yes": lung_findings.append("atelectasis")
+            if pleura.get("effusion_present") == "yes": lung_findings.append("pleural effusion")
+            if pleura.get("pneumothorax_present") == "yes": lung_findings.append("pneumothorax")
+            if cardio.get("cardiomegaly") == "yes": lung_findings.append("cardiomegaly")
+
+            findings_str = ", ".join(lung_findings) if lung_findings else "none extracted"
+
+            current_ctx = f"""
+## Current Patient Profile
+- **Demographics:** {f'{age}y ' if age else ''}{sex or 'unknown sex'}
+- **Comorbidities:** {comorbidities}
+- **Chief complaint:** {cc}
+- **Clinical narrative:** {hpi or 'not provided'}
+- **Primary diagnosis (extracted):** {diagnosis}
+- **Urgency:** {urgency}{f' | ICU candidate: {icu}' if icu else ''}
+- **Key findings:** {findings_str}
+"""
+        except Exception as e:
+            print(f"Failed to parse current_profile: {e}")
+
+    # ── Build historical twin context block ───────────────────────────────────
+    twin_ctx = f"""
+## Historical Twin Case
+{case_text[:800]}
+"""
+
+    # ── System prompt ─────────────────────────────────────────────────────────
+    system_prompt = (
+        "You are an expert clinical reasoning assistant. "
+        "Consult the two medical cases below and answer the clinician's question. "
+        "Keep your answer EXTREMELY short (maximum 3 sentences or 3 bullet points total). "
+        "Use Markdown formatting (bullet points, **bold** text). "
+        "CRITICAL INSTRUCTIONS: Do NOT generate long repetitive lists. Never use more than 3 bullet points. "
+        "Do NOT add introductory filler. Jump straight into the clinical facts.\n"
+        "IMPORTANT: Do NOT append a 'Final Answer:' section or use mathematical LaTeX boxes (\\boxed{}). Just provide the direct text response.\n\n"
+        f"{twin_ctx}"
+        f"{current_ctx}"
+        "\n---\n"
+        f"Question: {query}\n\n"
+        "Expert Answer:"
+    )
+
     dummy_img = Image.new("RGB", (336, 336), color=(0, 0, 0))
     try:
-        resp = query_medgemma(dummy_img, prompt=prompt, max_tokens=300)
+        import asyncio
+        stop_words = ["Final Answer:", "Final Answer", "---\nQuestion:", "Question:"]
+        resp = await asyncio.to_thread(query_medgemma, dummy_img, prompt=system_prompt, max_tokens=350, stop_sequences=stop_words)
         if isinstance(resp, list) and len(resp) > 0:
-            reply = resp[0].get("generated_text", "")
-            # Clean up the prompt from the response if the model echoes it
-            if "case text above." in reply:
-                reply = reply.split("case text above.")[-1].strip()
+            reply = resp[0].get("generated_text", "").strip()
             
-            # Simple fallback if empty
+            # Cleanly strip prompt echoing without relying on arbitrary [-50:] slices:
+            if "Expert Answer:" in reply:
+                reply = reply.split("Expert Answer:")[-1].strip()
+            elif f"Question: {query}" in reply:
+                reply = reply.split(f"Question: {query}")[-1].strip()
+
+            # Strip mathematical "Final Answer:" boxed formatting AND loops
+            import re
+            
+            # The ultimate loop killer: If it generated "Final Answer" at all, 
+            # throw away everything from that point onward forever.
+            if "Final Answer" in reply:
+                reply = reply.split("Final Answer")[0].strip()
+                
+            reply = re.sub(r"\\boxed{", "", reply)
+            
+            # Remove trailing closing brace from LaTeX box if it exists at the end
+            if reply.endswith("}"):
+                reply = reply[:-1].strip()
+                
+            # Clean up leading non-word artifacts if model started weirdly
+            reply = re.sub(r"^[\W_]+", "", reply)
+
+            # BRUTAL DEDUPLICATION: Kill repeating lines (AI stuttering)
+            lines = [line.strip() for line in reply.split('\n') if line.strip()]
+            seen = set()
+            dedupped_lines = []
+            for line in lines:
+                # Use a slightly normalized version of the line for matching to catch slight variations
+                norm_line = re.sub(r'\W+', '', line.lower())
+                if norm_line not in seen:
+                    seen.add(norm_line)
+                    dedupped_lines.append(line)
+            
+            # Rejoin the cleaned lines
+            reply = '\n\n'.join(dedupped_lines)
+
             if not reply:
-                reply = "I don't have enough clear information in the case text to answer that."
+                reply = "I don't have enough information in the provided case context to answer that."
             return {"reply": reply}
     except Exception as e:
         print(f"MedGemma chat error: {e}")
-        
+
     return {"reply": "I'm sorry, I couldn't reach the AI reasoning engine to answer this question right now."}
+
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# /enhance_profile  – MedGemma generates deep Clinical Synthesis
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/enhance_profile")
+async def enhance_profile(
+    profile_json: str = Form(...),
+    file: Optional[UploadFile] = File(None)
+):
+    """
+    Takes the structured case profile JSON and an optional image,
+    and asks MedGemma to synthesize hidden insights, missing risk factors,
+    and prognostic observations into a 3-4 sentence Markdown block.
+    """
+    try:
+        profile_data = json.loads(profile_json)
+        
+        # Build context from profile
+        age = profile_data.get("patient", {}).get("age_years", "")
+        sex = profile_data.get("patient", {}).get("sex", "")
+        cc = profile_data.get("presentation", {}).get("chief_complaint", "")
+        hpi = profile_data.get("presentation", {}).get("hpi", "")
+        pmh = profile_data.get("presentation", {}).get("pmh", "")
+        dx = profile_data.get("assessment", {}).get("diagnosis_primary", "")
+        comorb = ", ".join(profile_data.get("patient", {}).get("comorbidities", []) or [])
+        
+        ctx = f"Patient: {age}y {sex}\nCC: {cc}\nHPI: {hpi}\nPMH: {pmh}\nComorbidities: {comorb}\nPrimary Dx: {dx}"
+        
+        system_prompt = (
+            "You are an expert clinical reasoning assistant. "
+            "Review the patient profile below (and the image if provided). "
+            "Write an 'AI Clinical Synthesis' providing deep medical insights, potential "
+            "hidden risk factors, or prognostic observations that are NOT just repeating the provided text. "
+            "Keep your synthesis to EXACTLY 3-4 short sentences or bullet points. "
+            "Use Markdown format (bold key terms). Do NOT generate repetitive lists. "
+            "Do NOT append 'Final Answer:'. Do not include intro filler.\n\n"
+            f"## Case Profile\n{ctx[:800]}\n\n"
+            "Clinical Synthesis:"
+        )
+
+        img = None
+        has_image = False
+        if file and file.filename:
+            content = await file.read()
+            img = Image.open(io.BytesIO(content)).convert("RGB")
+            has_image = True
+        else:
+            img = Image.new("RGB", (336, 336), color=(0, 0, 0))
+
+        import asyncio
+        stop_words_synthesis = ["Final Answer:", "Final Answer", "---\nClinical Synthesis:", "Clinical Synthesis:"]
+        
+        # Prepare concurrent tasks
+        tasks = [
+            asyncio.to_thread(query_medgemma, img, prompt=system_prompt, max_tokens=250, stop_sequences=stop_words_synthesis)
+        ]
+        
+        # If image exists, add a second task for Imaging Context
+        if has_image:
+            imaging_prompt = (
+                "You are an expert radiologist. "
+                "Review the provided medical image and the patient's brief clinical context below. "
+                "Write an 'Imaging Context' summary focusing strictly on the key radiological findings, "
+                "their severity, and their direct clinical relevance to the patient's presentation. "
+                "Keep it to EXACTLY 2-3 short sentences. "
+                "Use Markdown format (bold key terms). Do NOT generate repetitive lists. "
+                "Do NOT append 'Final Answer:'.\n\n"
+                f"## Case Context\n{ctx[:500]}\n\n"
+                "Imaging Context:"
+            )
+            stop_words_imaging = ["Final Answer:", "Final Answer", "---\nImaging Context:", "Imaging Context:"]
+            tasks.append(
+                asyncio.to_thread(query_medgemma, img, prompt=imaging_prompt, max_tokens=200, stop_sequences=stop_words_imaging)
+            )
+
+        # Execute concurrently
+        results = await asyncio.gather(*tasks)
+        
+        # --- Process Synthesis ---
+        resp_synthesis = results[0]
+        reply_synthesis = ""
+        if isinstance(resp_synthesis, list) and len(resp_synthesis) > 0:
+            reply_synthesis = resp_synthesis[0].get("generated_text", "").strip()
+            
+            if "Clinical Synthesis:" in reply_synthesis:
+                reply_synthesis = reply_synthesis.split("Clinical Synthesis:")[-1].strip()
+            if "Final Answer" in reply_synthesis:
+                reply_synthesis = reply_synthesis.split("Final Answer")[0].strip()
+                
+            import re
+            reply_synthesis = re.sub(r"\\boxed{", "", reply_synthesis)
+            if reply_synthesis.endswith("}"): reply_synthesis = reply_synthesis[:-1].strip()
+            reply_synthesis = re.sub(r"^[\W_]+", "", reply_synthesis)
+
+            # Deduplication
+            lines = [line.strip() for line in reply_synthesis.split('\n') if line.strip()]
+            seen = set()
+            dedupped_lines = []
+            for line in lines:
+                norm_line = re.sub(r'\W+', '', line.lower())
+                if norm_line not in seen:
+                    seen.add(norm_line)
+                    dedupped_lines.append(line)
+            reply_synthesis = '\n\n'.join(dedupped_lines)
+
+        if not reply_synthesis:
+            reply_synthesis = "Unable to generate clinical synthesis."
+
+        # --- Process Imaging Context (if available) ---
+        reply_imaging = None
+        if has_image and len(results) > 1:
+            resp_imaging = results[1]
+            if isinstance(resp_imaging, list) and len(resp_imaging) > 0:
+                reply_imaging = resp_imaging[0].get("generated_text", "").strip()
+                
+                if "Imaging Context:" in reply_imaging:
+                    reply_imaging = reply_imaging.split("Imaging Context:")[-1].strip()
+                if "Final Answer" in reply_imaging:
+                    reply_imaging = reply_imaging.split("Final Answer")[0].strip()
+                    
+                import re
+                reply_imaging = re.sub(r"\\boxed{", "", reply_imaging)
+                if reply_imaging.endswith("}"): reply_imaging = reply_imaging[:-1].strip()
+                reply_imaging = re.sub(r"^[\W_]+", "", reply_imaging)
+
+                # Deduplication
+                lines = [line.strip() for line in reply_imaging.split('\n') if line.strip()]
+                seen = set()
+                dedupped_lines = []
+                for line in lines:
+                    norm_line = re.sub(r'\W+', '', line.lower())
+                    if norm_line not in seen:
+                        seen.add(norm_line)
+                        dedupped_lines.append(line)
+                reply_imaging = '\n\n'.join(dedupped_lines)
+
+        return {
+            "synthesis": reply_synthesis,
+            "imaging_context": reply_imaging
+        }
+            
+    except Exception as e:
+        print(f"MedGemma enhance error: {e}")
+        return {"synthesis": "I'm sorry, I couldn't generate the clinical synthesis right now.", "imaging_context": None}
+
+    return {"synthesis": "Unable to process the request.", "imaging_context": None}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# /explain_selection  – MedGemma explains a highlighted phrase in context
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/explain_selection")
+async def explain_selection(
+    selected_text: str = Form(...),
+    context: str = Form(default=""),
+):
+    """
+    Given a short highlighted phrase and its surrounding context,
+    ask MedGemma to explain it in 1-2 plain-language clinical sentences.
+    """
+    context_snippet = context[:500].strip()
+    prompt = (
+        f"You are a concise medical education assistant. "
+        f"Explain the following medical term or phrase in exactly 1-2 sentences, "
+        f"suitable for a clinical audience. "
+        f"Phrase: \"{selected_text}\". "
+        f"Context: \"{context_snippet}\". "
+        f"Do NOT repeat the phrase back as a complete sentence. Start directly with the explanation."
+    )
+
+    dummy_img = Image.new("RGB", (336, 336), color=(0, 0, 0))
+    try:
+        import asyncio
+        resp = await asyncio.to_thread(query_medgemma, dummy_img, prompt=prompt, max_tokens=120)
+        explanation = ""
+        if isinstance(resp, list) and len(resp) > 0:
+            raw = resp[0].get("generated_text", "").strip()
+            # Strip echoed prompt if model returns it
+            for marker in ["Start directly with the explanation.", context_snippet, selected_text]:
+                if marker and raw.endswith(marker) is False and marker in raw:
+                    raw = raw.split(marker)[-1].strip()
+            # Keep only first 2 sentences
+            import re as _re
+            sentences = _re.split(r"(?<=[.!?])\s+", raw)
+            explanation = " ".join(sentences[:2]).strip()
+
+        if not explanation:
+            explanation = f'"{selected_text}" — a medical term relevant to this clinical case.'
+
+        return {"explanation": explanation}
+    except Exception as e:
+        print(f"MedGemma explain_selection error: {e}")
+        return {"explanation": f'"{selected_text}" — unable to reach the AI explanation engine right now.'}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
