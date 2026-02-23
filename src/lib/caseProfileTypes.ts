@@ -60,6 +60,7 @@ export interface AssessmentInfo {
     urgency: string | null;
     infectious_concern: string | null;
     icu_candidate: string | null;
+    clinical_synthesis?: string | null;
 }
 
 export interface LungsFindings {
