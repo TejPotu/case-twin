@@ -378,14 +378,25 @@ async def search_hospitals(
             resp.raise_for_status()
             data = resp.json()
             
-            # Extract standard web search results
-            web_results = data.get("results", {}).get("web", [])
+            # Extract standard web search results — handle both v1 (hits) and v2 (results.web) shapes
+            web_results = data.get("hits", []) or data.get("results", {}).get("web", [])
+
+            # If first query returned nothing, retry with a simpler query (drop equipment/distance)
+            if not web_results:
+                simple_query = f"top hospitals medical centers {search_location_str} treating {diagnosis}"
+                print(f"[search_hospitals] First query returned 0 results, retrying with simplified query...", flush=True)
+                retry_resp = await client.get("https://ydc-index.io/v1/search", headers=headers, params={"query": simple_query, "count": 10})
+                retry_resp.raise_for_status()
+                retry_data = retry_resp.json()
+                web_results = retry_data.get("hits", []) or retry_data.get("results", {}).get("web", [])
+                print(f"[search_hospitals] Retry returned {len(web_results)} results", flush=True)
+
             all_text = ""
             for hit in web_results:
                 snippets = hit.get("snippets", [])
                 if snippets:
                     all_text += " ".join(snippets) + "\n"
-            
+
             print(f"[{datetime.now().strftime('%H:%M:%S')}] [search_hospitals] You.com Search Snippets:\n{all_text[:300]}...\n", flush=True)
 
             import random
@@ -400,7 +411,7 @@ async def search_hospitals(
                 try:
                     import google.generativeai as genai
                     genai.configure(api_key=gemini_api_key_g)
-                    g_model = genai.GenerativeModel("gemini-2.0-flash")
+                    g_model = genai.GenerativeModel("gemini-2.5-flash")
                     raw_for_gemini = [
                         {
                             "title": h.get("title", ""),
@@ -440,7 +451,13 @@ async def search_hospitals(
                             g_text = g_text[len(prefix):]
                     if g_text.endswith("```"):
                         g_text = g_text[:-3]
-                    ai_enriched = json.loads(g_text.strip())
+                    g_text = g_text.strip()
+                    # Recover from truncated JSON by trimming to the last complete object
+                    if not g_text.endswith("]"):
+                        last_close = g_text.rfind("},")
+                        if last_close != -1:
+                            g_text = g_text[:last_close + 1] + "]"
+                    ai_enriched = json.loads(g_text)
                     print(f"[search_hospitals] Gemini enriched {len(ai_enriched)} entries", flush=True)
                 except Exception as e:
                     print(f"[search_hospitals] Gemini enrichment failed, using raw titles: {e}", flush=True)
@@ -527,38 +544,52 @@ async def search_hospitals(
     except Exception as e:
         print(f"Failed to fetch or parse You.com data: {e}")
         import traceback
+        import random
         traceback.print_exc()
-        # Fallback to simulated data if the API request or JSON parsing fails
-        fallback = [
-             {
-                "name": "Mayo Clinic — Rochester",
-                "url": "https://www.mayoclinic.org/patient-visitor-guide/minnesota",
-                "capability": "100%",
-                "travel": "2h 10m",
-                "reason": f"Interventional Pulmonology + Leading care for {diagnosis}",
-                "lat": 44.0227,
-                "lng": -92.4667
-            },
-            {
-                "name": "Cleveland Clinic",
-                "url": "https://my.clevelandclinic.org/locations",
-                "capability": "95%",
-                "travel": "1h 55m",
-                "reason": "Thoracic surgery + Clinical trials",
-                "lat": 41.5034,
-                "lng": -81.6206
-            },
-            {
-                "name": "Mass General",
-                "url": "https://www.massgeneral.org/",
-                "capability": "90%",
-                "travel": "3h 05m",
-                "reason": "Radiation oncology + Research program",
-                "lat": 42.3621,
-                "lng": -71.0691
-            }
-        ]
-        return {"centers": fallback}
+        # Gemini fallback: generate real hospital suggestions when You.com fails entirely
+        gemini_api_key_fb = os.getenv("GEMINI_API_KEY")
+        if gemini_api_key_fb:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=gemini_api_key_fb)
+                g_model_fb = genai.GenerativeModel("gemini-2.5-flash")
+                eq_hint = f" with capabilities: {equipment}" if equipment else ""
+                fb_prompt = (
+                    f'List 5 real hospitals or medical centers near {search_location_str} '
+                    f'known for treating "{diagnosis}"{eq_hint}. '
+                    f'Return ONLY a valid JSON array (no markdown fences), each item:\n'
+                    f'{{"name":"Institution Name","url":"https://official-website.org",'
+                    f'"rationale":"2-3 sentences on why this facility excels at treating {diagnosis}",'
+                    f'"lat":12.345,"lng":-67.890}}\n'
+                    f'Use real approximate coordinates. Do NOT use 0.0 placeholder values.'
+                )
+                def _fb_gemini():
+                    return g_model_fb.generate_content(fb_prompt)
+                fb_resp = await asyncio.to_thread(_fb_gemini)
+                fb_text = fb_resp.text.strip()
+                for prefix in ("```json", "```"):
+                    if fb_text.startswith(prefix):
+                        fb_text = fb_text[len(prefix):]
+                if fb_text.endswith("```"):
+                    fb_text = fb_text[:-3]
+                fb_centers_raw = json.loads(fb_text.strip())
+                if isinstance(fb_centers_raw, list) and fb_centers_raw:
+                    fb_centers = []
+                    for i, c in enumerate(fb_centers_raw):
+                        fb_centers.append({
+                            "name": c.get("name", f"Medical Center {i + 1}"),
+                            "url": c.get("url", ""),
+                            "capability": str(99 - i * 4) + "%",
+                            "travel": "TBD",
+                            "reason": c.get("rationale", "Specialized care facility."),
+                            "lat": c.get("lat") or (user_lat + random.uniform(-1.5, 1.5)),
+                            "lng": c.get("lng") or (user_lng + random.uniform(-1.5, 1.5)),
+                        })
+                    print(f"[search_hospitals] Gemini fallback returned {len(fb_centers)} centers", flush=True)
+                    return {"centers": fb_centers}
+            except Exception as fb_e:
+                print(f"[search_hospitals] Gemini fallback also failed: {fb_e}", flush=True)
+        return {"centers": []}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
