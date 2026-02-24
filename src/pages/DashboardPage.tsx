@@ -513,8 +513,9 @@ function MatchCard({
             <span key={idx} className="text-[11px] px-2 py-0.5 bg-zinc-100 text-zinc-700 rounded-md border border-zinc-200/80 truncate max-w-[150px]">{c}</span>
           ))}
           {item.raw_payload?.presentation?.chief_complaint && (
-            <span className="text-[11px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-100 truncate max-w-[200px]" title="Chief Complaint">
-              🚨 {item.raw_payload.presentation.chief_complaint.slice(0, 40)}{item.raw_payload.presentation.chief_complaint.length > 40 ? "..." : ""}
+            <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 bg-[#F1F1EF] text-[#37352F] rounded text-opacity-90 max-w-[200px] truncate border border-[#E9E9E7]" title="Chief Complaint">
+              <span className="font-semibold text-rose-600/80 mr-1.5">CC:</span>
+              {item.raw_payload.presentation.chief_complaint.slice(0, 40)}{item.raw_payload.presentation.chief_complaint.length > 40 ? "..." : ""}
             </span>
           )}
         </div>
@@ -641,12 +642,8 @@ function MatchesScreen({
             {selected === null ? "Closest Case Twins" : "Top Matches"}
           </h1>
           {selected === null && (
-            <div className="flex items-center gap-2 animate-in fade-in duration-500">
-              <select className="mr-select h-9 w-40 text-[14px] leading-5 bg-white">
-                <option>Best visual match</option>
-                <option>Best outcome</option>
-              </select>
-              <span className="mr-badge mr-badge--neutral">Top {items.length || 5}</span>
+            <div className="flex items-center animate-in fade-in duration-500">
+              <span className="text-[13px] font-medium text-zinc-500 tracking-wide uppercase">Top 10 results</span>
             </div>
           )}
         </div>

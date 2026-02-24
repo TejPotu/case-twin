@@ -84,7 +84,7 @@ def _compute_context_score(payload: dict, profile: dict) -> float:
     return score
 
 
-def search_similar(embedding: list[float], profile_data: dict = None, limit: int = 5) -> list[dict]:
+def search_similar(embedding: list[float], profile_data: dict = None, limit: int = 10) -> list[dict]:
     """
     Search Qdrant for similar chest X-rays.
     Returns a list of dicts shaped for the frontend MatchItem.
