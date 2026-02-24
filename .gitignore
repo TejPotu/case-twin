@@ -42,3 +42,5 @@ backend/application_default_credentials.json
 
 dataset_cxr_primary.json
 ingest_cxr.py
+
+venv/
